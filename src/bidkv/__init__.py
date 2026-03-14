@@ -8,6 +8,7 @@
 """
 
 from bidkv._version import __version__
+from bidkv.adapters import FrameworkAdapter
 from bidkv.baselines import (
     BaselineContext,
     BaselineRegistry,
@@ -23,7 +24,6 @@ from bidkv.baselines import (
     StaticRandomStrategy,
     UniformStrategy,
 )
-from bidkv.adapters import FrameworkAdapter
 from bidkv.compression import CompressionExecutor
 from bidkv.config import BidKVConfig
 from bidkv.pool import BidPoolManager
