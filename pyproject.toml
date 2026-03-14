@@ -47,6 +47,16 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "ARG"]
 # **context is part of ScoringStrategy Protocol — must keep for interface compatibility
 "src/bidkv/scoring/uniform.py" = ["ARG002"]
 "src/bidkv/scoring/random_score.py" = ["ARG002"]
+# request_id kept in metrics API for future per-request tracking
+"src/bidkv/adapters/vllm/adapter.py" = ["ARG002"]
+"src/bidkv/adapters/sglang/adapter.py" = ["ARG002"]
+# SGLang hook params needed for real SGLang integration, unused in stub implementations
+"src/bidkv/adapters/sglang/radix_hook.py" = ["ARG001"]
+"src/bidkv/adapters/sglang/h2o_hook.py" = ["ARG001"]
+# **kwargs is part of BaselineStrategy ABC interface — must keep for subclass compatibility
+"src/bidkv/baselines/preempt_evict.py" = ["ARG002"]
+"src/bidkv/baselines/static_random.py" = ["ARG002"]
+"src/bidkv/baselines/uniform.py" = ["ARG002"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

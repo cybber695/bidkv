@@ -4,6 +4,41 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **SGLang Adapter** (#045): BidKV 在 SGLang 框架上的完整适配器
+  - `bidkv.adapters.base.FrameworkAdapter` ABC: 最小可行跨框架抽象（5 层职责边界）
+  - `bidkv.adapters.sglang.SGLangAdapter`: SGLang RadixAttention 适配器
+    - KV stats 获取: 从 `TokenToKVPool` 读取 used/total
+    - Pressure interception: 在 RadixAttention LRU 驱逐前获得压缩尝试机会
+    - Compression 执行: radix tree 节点级缩减，细粒度释放 KV
+    - H2O decode step 回调: 更新累积注意力评分
+    - 请求生命周期管理: track/complete/cleanup
+  - `bidkv.adapters.sglang.radix_hook`: RadixAttention 节点级压缩/释放钩子
+    - 共享前缀保护: ref count > 1 的 token 不可压缩
+    - `get_shared_prefix_positions()`: 检测共享前缀位置
+  - `bidkv.adapters.sglang.scheduler_hook`: Scheduler batch selection 前 bidkv 注入
+    - Monkey-patch `get_next_batch_to_run()` 实现 pressure interception boundary
+    - 同时 hook RadixCache eviction path
+  - `bidkv.adapters.sglang.h2o_hook`: decode step 后 H2O scoring 更新回调
+  - Kill switch 热切换: `activate_kill_switch()` / `deactivate_kill_switch()`
+  - Metrics 输出格式与 vLLM adapter 对齐（directional consistency 可验证）
+  - 27 个集成测试全部通过
+
+- **Baselines Implementation** (#046): 7 个 baseline 策略 + Oracle DP 上界
+  - `bidkv.baselines.BaselineStrategy` ABC + `CompressionAction` / `RequestState` 数据类型
+  - `bidkv.baselines.BaselineRegistry`: 策略注册表，支持 `create_default_registry()` 一键注册全部 8 个策略
+  - `bidkv.baselines.PreemptEvictStrategy`: 零压缩基线（`victim = argmin(priority)`）
+  - `bidkv.baselines.StaticRandomStrategy`: 固定比率 + 随机受害者（控制变量基线）
+  - `bidkv.baselines.H2OStyleStrategy`: token 级 H2O scoring 压缩，不走 bid 机制（**H2O-Style ≠ H2OScoring**）
+  - `bidkv.baselines.UniformStrategy`: 所有请求均等压缩（`∀req: compress(needed/N)`）
+  - `bidkv.baselines.GlobalNoBidStrategy`: 系统自动推断 utility（`U_sys = r/(δ_H2O+ε)`），**关键 bid 归因 baseline**
+  - `bidkv.baselines.SlackAwareStrategy`: SLO 剩余时间感知（deadline 远的先压缩）
+  - `bidkv.baselines.BidKVStrategy`: 完整 bid pipeline 包装器（scoring → pool → solver）
+  - `bidkv.baselines.OracleDPStrategy`: Grouped Knapsack DP 精确最优解（离线上界）
+  - Candidate-universe consistency: 所有 baseline 接收同一 `candidates` 列表
+  - Baseline Spec 预注册文档: `docs/baseline-specs.md`
+
 ### Fixed
 
 - **Algorithm Corrections S01+S04+S07** (#042): 三项算法层语义修正

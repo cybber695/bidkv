@@ -4,9 +4,26 @@
 - Protocol 层：核心类型（CompressionBid, BidPool, BidAcceptance）
 - Scoring 层：token 重要度评分策略
 - Core 层：BidPoolManager, GreedyBidSolver, PressureDetector, CompressionExecutor
+- Baselines 层：7 个 baseline 策略 + Oracle DP 上界
 """
 
 from bidkv._version import __version__
+from bidkv.baselines import (
+    BaselineContext,
+    BaselineRegistry,
+    BaselineStrategy,
+    BidKVStrategy,
+    CompressionAction,
+    GlobalNoBidStrategy,
+    H2OStyleStrategy,
+    OracleDPStrategy,
+    PreemptEvictStrategy,
+    RequestState,
+    SlackAwareStrategy,
+    StaticRandomStrategy,
+    UniformStrategy,
+)
+from bidkv.adapters import FrameworkAdapter
 from bidkv.compression import CompressionExecutor
 from bidkv.config import BidKVConfig
 from bidkv.pool import BidPoolManager
@@ -62,4 +79,20 @@ __all__ = [
     "RandomScoring",
     "ScoringStrategy",
     "UniformScoring",
+    # Baselines
+    "BaselineContext",
+    "BaselineRegistry",
+    "BaselineStrategy",
+    "BidKVStrategy",
+    "CompressionAction",
+    "GlobalNoBidStrategy",
+    "H2OStyleStrategy",
+    "OracleDPStrategy",
+    "PreemptEvictStrategy",
+    "RequestState",
+    "SlackAwareStrategy",
+    "StaticRandomStrategy",
+    "UniformStrategy",
+    # Adapters
+    "FrameworkAdapter",
 ]
