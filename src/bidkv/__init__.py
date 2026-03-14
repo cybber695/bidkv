@@ -1,6 +1,6 @@
 """bidkv — CompressionBid protocol layer for KV cache scheduling primitives.
 
-零外部依赖的独立 Python 包，定义 BidKV 协议层核心类型。
+零外部依赖的独立 Python 包，定义 BidKV 协议层核心类型与评分策略。
 """
 
 from bidkv._version import __version__
@@ -18,10 +18,18 @@ from bidkv.protocol import (
     compute_utility,
     make_bid_id,
 )
+from bidkv.scoring import (
+    AttentionWeightScoring,
+    H2OScoring,
+    RandomScoring,
+    ScoringStrategy,
+    UniformScoring,
+)
 
 __all__ = [
     "__version__",
     "FEATURE_GATE_ID",
+    # Protocol
     "BidAcceptance",
     "BidCapacityError",
     "BidExecutionError",
@@ -33,4 +41,10 @@ __all__ = [
     "CompressionBidProvider",
     "compute_utility",
     "make_bid_id",
+    # Scoring
+    "AttentionWeightScoring",
+    "H2OScoring",
+    "RandomScoring",
+    "ScoringStrategy",
+    "UniformScoring",
 ]

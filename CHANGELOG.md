@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Scoring Strategy Layer** (#043): Token 重要度评分策略
+  - `ScoringStrategy` Protocol（`score()` + `generate_bids()`）
+  - `H2OScoring`: Heavy Hitter Oracle — 基于累积注意力的 practical scoring（CPU, 无 GPU 依赖）
+  - `AttentionWeightScoring`: Full attention weight aggregate — reference scoring
+  - `UniformScoring`: 等权基线（消融实验用）
+  - `RandomScoring`: 随机基线（消融实验用）
+  - `generate_bids()` 按压缩级别生成合法 CompressionBid（三层体系完整）
+  - H2O vs AttentionWeight Spearman rank correlation ≥ 0.7 验证通过
+  - H2OScoring 精度边界声明文档（稀疏度 >90%、>32K token、多轮对话退化条件）
+  - 60 个 scoring 单元测试全部通过
+
 ## [0.1.0] - 2026-03-14
 
 ### Added
