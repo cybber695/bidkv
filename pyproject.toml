@@ -53,6 +53,8 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "ARG"]
 # SGLang hook params needed for real SGLang integration, unused in stub implementations
 "src/bidkv/adapters/sglang/radix_hook.py" = ["ARG001"]
 "src/bidkv/adapters/sglang/h2o_hook.py" = ["ARG001"]
+# Test FakeScheduler params mirror real vLLM Scheduler interface
+"tests/test_vllm_adapter.py" = ["ARG002"]
 # **kwargs is part of BaselineStrategy ABC interface — must keep for subclass compatibility
 "src/bidkv/baselines/preempt_evict.py" = ["ARG002"]
 "src/bidkv/baselines/static_random.py" = ["ARG002"]

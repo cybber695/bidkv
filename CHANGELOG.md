@@ -6,6 +6,25 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **vLLM Adapter** (#044): BidKV 在 vLLM v1 架构上的完整适配器
+  - `bidkv.adapters.vllm.VLLMAdapter`: vLLM v1 适配器（实现 FrameworkAdapter ABC）
+    - KV stats 获取: 从 `KVCacheManager` / `BlockPool` 读取 used/total blocks
+    - Pressure interception: 在 `schedule()` 分配 slots 前尝试 BidKV 压缩
+    - Compression 执行: 按 bid 释放 request 尾部 KV blocks
+    - H2O decode step 回调: `update_from_output()` 后更新累积注意力评分
+    - 请求生命周期管理: track/complete/cleanup（`_free_request` hook）
+  - `bidkv.adapters.vllm.scheduler_hook`: vLLM v1 Scheduler monkey-patch 注入
+    - `install_scheduler_hook()` / `uninstall_scheduler_hook()` 可逆 patch
+    - `_patched_schedule()`: 在 `allocate_slots()` 前执行 BidKV `try_compress()`
+    - `_patched_update_from_output()`: decode 完成后同步 token tracking + H2O scoring
+    - `_patched_free_request()`: 请求结束时清理 BidKV 状态
+  - `bidkv.adapters.vllm.h2o_hook`: H2O decode step 注意力代理生成
+    - Position-based attention proxy: attention sink (pos 0–3) + recency bias
+    - `update_h2o_from_output()`: 从 scheduler output 批量更新 H2O scoring
+  - Kill switch 热切换: `activate_kill_switch()` / `deactivate_kill_switch()`
+  - `AdapterMetrics`: 压缩统计（尝试次数、成功次数、释放 token 数）
+  - 39 个测试全部通过
+
 - **SGLang Adapter** (#045): BidKV 在 SGLang 框架上的完整适配器
   - `bidkv.adapters.base.FrameworkAdapter` ABC: 最小可行跨框架抽象（5 层职责边界）
   - `bidkv.adapters.sglang.SGLangAdapter`: SGLang RadixAttention 适配器
