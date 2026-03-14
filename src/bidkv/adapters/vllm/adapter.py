@@ -1,9 +1,14 @@
 """VLLMAdapter — BidKV 在 vLLM 框架上的适配器。
 
-vLLM 0.11+ 使用 v1 调度架构：
+vLLM v1（0.17+）调度架构：
 - ``Scheduler`` 在 ``schedule()`` 中通过 ``kv_cache_manager.allocate_slots()`` 分配 KV
 - 分配失败时 preempt 最低优先级 running request
 - BidKV 在 preemption 前注入压缩尝试，减少不必要的 preemption
+
+注入方式：Scheduler monkey-patch（``scheduler_hook.py``）。
+vLLM v1 移除了 ``BlockSpaceManager`` 抽象和 ``--block-manager-class`` 参数，
+因此 issue #044 原始 spec 中的 BlockManager 子类方案不再适用。
+详见 ``__init__.py`` 中的 Architecture Decision 说明。
 
 核心职责：
 1. KV stats 获取：从 ``KVCacheManager.block_pool`` 读取 usage

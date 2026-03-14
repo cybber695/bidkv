@@ -7,6 +7,8 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - **vLLM Adapter** (#044): BidKV 在 vLLM v1 架构上的完整适配器
+  - Architecture Decision: vLLM v1 (0.17+) 移除了 `BlockSpaceManager` 和 `--block-manager-class`，
+    因此采用 Scheduler monkey-patch 方案替代原 spec 的 BlockManager 子类方案（功能等价）
   - `bidkv.adapters.vllm.VLLMAdapter`: vLLM v1 适配器（实现 FrameworkAdapter ABC）
     - KV stats 获取: 从 `KVCacheManager` / `BlockPool` 读取 used/total blocks
     - Pressure interception: 在 `schedule()` 分配 slots 前尝试 BidKV 压缩
