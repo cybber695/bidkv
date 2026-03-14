@@ -6,6 +6,22 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Core Layer Extraction** (#041): BidPoolManager, GreedyBidSolver, PressureDetector, CompressionExecutor
+  - `bidkv.pool.BidPoolManager`: 通用版 bid 快照管理器（零 sagellm 依赖）
+    - `submit_bids()` 替代原始 `refresh(compressor, request)` — FrameworkAdapter 直接提交 bid 列表
+    - feature gate + kill switch + thread-safe (threading.Lock)
+    - `get_pool_snapshot()` → BidPool (frozen, candidate-universe consistency)
+  - `bidkv.solver.GreedyBidSolver`: 贪心 Knapsack 求解器 (Algorithm 1, 论文 §4)
+    - Utility-ratio 排序: U = r/(δ+ε), 仅使用 Layer 1 字段
+    - 约束 A: 每 request 最多 1 bid; 约束 B: Σδ ≤ delta_budget
+    - `SolverConfig`: enabled, delta_budget, max_bids_per_solve, kill_switch
+  - `bidkv.pressure.PressureDetector`: KV 内存压力感知（通用版）
+    - `update_stats(used_tokens, max_tokens, pending_high_priority)` — 纯数值输入
+    - 触发条件: 占用率 ≥ threshold_pct 或 (pending_high_priority > 0 且 free < min_free_tokens)
+    - `PressureConfig`: threshold_pct, min_free_tokens, enabled
+  - `bidkv.compression.CompressionExecutor`: Protocol — FrameworkAdapter 实现接口
+  - 68 个 core 单元测试全部通过（含 Pool→Solver→Pressure 联动测试）
+
 - **Scoring Strategy Layer** (#043): Token 重要度评分策略
   - `ScoringStrategy` Protocol（`score()` + `generate_bids()`）
   - `H2OScoring`: Heavy Hitter Oracle — 基于累积注意力的 practical scoring（CPU, 无 GPU 依赖）
