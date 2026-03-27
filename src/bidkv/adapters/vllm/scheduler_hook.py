@@ -51,6 +51,13 @@ def install_scheduler_hook(scheduler: Any, adapter: VLLMAdapter) -> None:
     adapter:
         VLLMAdapter 实例。
     """
+    # Install KV truncation support (token-level block release)
+    kv_cache_manager = getattr(scheduler, "kv_cache_manager", None)
+    if kv_cache_manager is not None:
+        from bidkv.adapters.vllm.truncation_hook import install_truncation_support
+
+        install_truncation_support(kv_cache_manager)
+
     # 保存原始方法
     setattr(scheduler, f"{_ORIG_PREFIX}schedule", scheduler.schedule)
     setattr(scheduler, f"{_ORIG_PREFIX}update_from_output", scheduler.update_from_output)
@@ -252,7 +259,7 @@ def _reorder_running_for_preemption(scheduler: Any, adapter: VLLMAdapter) -> Non
         running.append(req)
 
 
-def _mode_b_proactive_preempt(scheduler: Any, adapter: VLLMAdapter) -> None:
+def _proactive_preempt(scheduler: Any, adapter: VLLMAdapter) -> None:
     """Proactively preempt+truncate lowest-quality request under KV pressure.
 
     Fires BEFORE vLLM's native schedule(), so freed blocks become available
@@ -297,6 +304,11 @@ def _mode_b_proactive_preempt(scheduler: Any, adapter: VLLMAdapter) -> None:
     if usage < 0.88:
         return
 
+    # --- Compute how many tokens to free (target: bring usage down to 80%) ---
+    used, total = adapter.get_kv_stats()
+    target_usage = int(total * 0.80)
+    needed_tokens = max(1, used - target_usage)
+
     # --- Strategy-aware victim selection ---
     strategy = adapter._experiment_strategy
     strategy_name = adapter._experiment_strategy_name
@@ -309,9 +321,6 @@ def _mode_b_proactive_preempt(scheduler: Any, adapter: VLLMAdapter) -> None:
         pairs = _build_running_candidates(running, adapter)
         candidates = [p[0] for p in pairs]
         if candidates:
-            used, total = adapter.get_kv_stats()
-            target_usage = int(total * 0.80)
-            needed_tokens = max(1, used - target_usage)
             actions = strategy.select_victims(candidates, needed_tokens)
             if actions:
                 victim_id = actions[0].request_id
@@ -333,12 +342,49 @@ def _mode_b_proactive_preempt(scheduler: Any, adapter: VLLMAdapter) -> None:
     if victim_id is None:
         return
 
-    # Quality-aware victim selection + earlier intervention
-    # before vLLM's cascade preemption.
-    freed = adapter._execute_recompute_fallback(victim_id)
+    # Quality-aware victim selection + truncation.
+    freed = adapter.execute_compression(victim_id, needed_tokens)
     if freed > 0:
         scheduler._bidkv_last_proactive = now
-        _diag(f"proactive preempt: {victim_id} ({diag_detail}, usage={usage:.2f}, freed={freed})")
+        _diag(f"proactive truncate: {victim_id} ({diag_detail}, usage={usage:.2f}, freed={freed})")
+
+
+_MODEL_EXECUTOR_RESOLVED = False
+
+
+def _resolve_model_executor(scheduler: Any, adapter: VLLMAdapter) -> None:
+    """Lazily discover model_executor via gc.get_referrers.
+
+    Plugin cannot patch EngineCore.__init__ effectively because
+    load_general_plugins() runs INSIDE the already-executing __init__.
+    Instead, on the first schedule() call (after __init__ completes),
+    walk gc.get_referrers(scheduler) to find EngineCore and grab its
+    model_executor for Mode B block-table sync.
+    """
+    global _MODEL_EXECUTOR_RESOLVED
+    if _MODEL_EXECUTOR_RESOLVED:
+        return
+    _MODEL_EXECUTOR_RESOLVED = True
+
+    # gc.get_referrers returns 0 in vLLM's spawned EngineCore subprocess.
+    # Walk the call stack instead: schedule() is called by EngineCore.step()
+    # or similar, whose `self` has model_executor.
+    import sys
+
+    frame = sys._getframe(1)  # caller of _patched_schedule
+    while frame is not None:
+        self_obj = frame.f_locals.get("self")
+        if self_obj is not None:
+            me = getattr(self_obj, "model_executor", None)
+            if me is not None:
+                adapter._model_executor = me
+                _diag(
+                    f"resolved model_executor via stack walk "
+                    f"(frame={frame.f_code.co_name})"
+                )
+                return
+        frame = frame.f_back
+    _diag("WARN: could not resolve model_executor via stack walk")
 
 
 def _patched_schedule(scheduler: Any, adapter: VLLMAdapter) -> Any:
@@ -353,6 +399,10 @@ def _patched_schedule(scheduler: Any, adapter: VLLMAdapter) -> Any:
     """
     global _SCHEDULE_CALL_COUNT
     _SCHEDULE_CALL_COUNT += 1
+
+    # Lazy-resolve model_executor on first call (after EngineCore.__init__)
+    if adapter._model_executor is None:
+        _resolve_model_executor(scheduler, adapter)
     if _SCHEDULE_CALL_COUNT <= 3 or _SCHEDULE_CALL_COUNT % 1000 == 0:
         used, total = adapter.get_kv_stats()
         tracked = len(adapter._request_tokens)
@@ -373,7 +423,7 @@ def _patched_schedule(scheduler: Any, adapter: VLLMAdapter) -> Any:
     _sync_request_tracking(scheduler, adapter)
 
     # Proactively preempt lowest-quality request when KV pressure is high
-    _mode_b_proactive_preempt(scheduler, adapter)
+    _proactive_preempt(scheduler, adapter)
 
     # Reorder running list: put most expendable request at the end
     # (FCFS preemption uses self.running.pop() — last element)

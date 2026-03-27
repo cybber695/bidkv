@@ -499,7 +499,6 @@ class SGLangAdapter(FrameworkAdapter):
             kill_switch=True,
             delta_budget=self._config.delta_budget,
             max_bids_per_solve=self._config.max_bids_per_solve,
-            execution_mode=self._config.execution_mode,
         )
         self._pool_manager.activate_kill_switch()
         self._solver.update_config(
@@ -520,7 +519,6 @@ class SGLangAdapter(FrameworkAdapter):
             kill_switch=False,
             delta_budget=self._config.delta_budget,
             max_bids_per_solve=self._config.max_bids_per_solve,
-            execution_mode=self._config.execution_mode,
         )
         self._pool_manager.enable()
         self._solver.update_config(

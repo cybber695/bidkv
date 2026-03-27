@@ -1,10 +1,34 @@
 {
-  "frozen_at": "2026-03-16T02:12:38.344124+00:00",
-  "model": "/home/cyb/Llama-3.1-8B-Instruct",
-  "num_requests_per_workload": 100,
+  "frozen_at": "2026-03-26T14:20:08.933968+00:00",
+  "seed": 42,
+  "pilot": false,
+  "rates": null,
+  "workload_rates": {
+    "mixed": [
+      2.0,
+      3.8,
+      5.7
+    ],
+    "long_context": [
+      0.35,
+      0.5,
+      0.7
+    ]
+  },
   "workloads": [
-    "chat",
-    "summarization",
-    "qa"
-  ]
+    "mixed",
+    "long_context"
+  ],
+  "num_requests": {
+    "mixed": 1000,
+    "long_context": 500
+  },
+  "hashes": {
+    "mixed_rate2.0.json": "6221f218b1a56b991acb08558e50df821bcb27b60bf1da562c548dd4c23541fd",
+    "mixed_rate3.8.json": "67f67193b7e6163965c972c113acab892e7135c2b8dffe602f6dafa7f42a26e8",
+    "mixed_rate5.7.json": "c1020d5edaf3c442327dabb72fc2958b6cd347fcf29d22b613029df2d8c96188",
+    "long_rate0.35.json": "37ec72f2151b2346a7759fc01d48d7381671de0e0a7e811402b94bedf38f7f7b",
+    "long_rate0.5.json": "1480e30b3175863080a926243e0450e1b648f627c36f1e7ba523f910ec517dd4",
+    "long_rate0.7.json": "b4febee0fd36ac64b04641ae9511f45029ecf0896f29e111b0888710bbeb6b85"
+  }
 }

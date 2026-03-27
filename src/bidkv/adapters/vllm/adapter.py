@@ -38,6 +38,17 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_DIAG_LOG = "/tmp/bidkv_diag.log"
+
+
+def _diag(msg: str) -> None:
+    """Write diagnostic message to a file (works in subprocesses)."""
+    import os
+
+    with open(_DIAG_LOG, "a") as f:
+        f.write(f"[{os.getpid()}] adapter: {msg}\n")
+
+
 # 默认压缩级别（论文 §4 标准设置）
 DEFAULT_COMPRESSION_LEVELS: tuple[float, ...] = (0.2, 0.4, 0.6, 0.8)
 
@@ -108,6 +119,10 @@ class VLLMAdapter(FrameworkAdapter):
 
         # Metrics
         self._metrics = AdapterMetrics()
+
+        # Model executor reference (set by plugin.py after EngineCore init).
+        # Used by Mode B truncation to sync model runner's cached block table.
+        self._model_executor: Any = None
 
         logger.info(
             "VLLMAdapter created: enabled=%s, kill_switch=%s, compression_levels=%s",
@@ -257,155 +272,274 @@ class VLLMAdapter(FrameworkAdapter):
 
         return self._execute_tail_truncation(request_id, target_tokens)
 
-    def _execute_recompute_fallback(self, request_id: str) -> int:
-        """Internal: preempt request → vLLM frees all KV → recompute on resume.
-
-        Used as the final step of tail_truncation (after output truncation)
-        and by proactive preemption in scheduler_hook.
-        Zero coordinator manipulation. Zero crash risk.
-
-        Uses ``Scheduler._preempt_request()`` — the same internal API that
-        vLLM itself calls within ``schedule()`` for native preemption.
-
-        Returns
-        -------
-        int
-            释放的 token 数量（即该 request 的全部追踪 token）。
-        """
-        if self._scheduler is None:
-            return 0
-
-        token_ids = self._request_tokens.get(request_id)
-        total_tokens = len(token_ids) if token_ids else 0
-        if total_tokens == 0:
-            return 0
-
-        # Look up the vLLM Request object
-        requests_dict = getattr(self._scheduler, "requests", None)
-        if requests_dict is None:
-            return 0
-        request_obj = requests_dict.get(request_id)
-        if request_obj is None:
-            return 0
-
-        # Only preempt RUNNING requests
-        try:
-            from vllm.v1.request import RequestStatus
-        except ImportError:
-            return 0
-        if request_obj.status != RequestStatus.RUNNING:
-            return 0
-
-        # Remove from running queue (required before calling _preempt_request)
-        running = getattr(self._scheduler, "running", None)
-        if running is None:
-            return 0
-        try:
-            running.remove(request_obj)
-        except ValueError:
-            return 0  # not in running list
-
-        # Use vLLM native preempt — the ONLY safe way to release KV.
-        # This is the same API vLLM calls inside schedule() for preemption:
-        # frees KV blocks, resets computed tokens, puts request back in waiting.
-        import time
-
-        self._scheduler._preempt_request(request_obj, time.monotonic())
-
-        # Clear prev_step tracking so the preempted request doesn't trigger
-        # the "assert not scheduled_in_prev_step" in _make_cached_request_data
-        # when it re-enters the waiting queue and gets re-scheduled.
-        prev_ids = getattr(self._scheduler, "prev_step_scheduled_req_ids", None)
-        if prev_ids is not None:
-            prev_ids.discard(request_id)
-
-        # Clean up BidKV internal state
-        self._request_tokens.pop(request_id, None)
-        self._pool_manager.remove_by_request(request_id)
-        self._metrics.record_compression(request_id, total_tokens)
-
-        logger.debug(
-            "_execute_recompute_fallback: request=%s, freed=%d tokens (preempted)",
-            request_id,
-            total_tokens,
-        )
-        return total_tokens
-
     def _execute_tail_truncation(self, request_id: str, target_tokens: int) -> int:
-        """Truncate output tokens + native preempt for reduced recompute cost.
+        """Token-level KV block truncation.
 
-        Truncates the request's output token lists first, then preempts via
-        vLLM's native preempt/recompute path. When the request is re-scheduled,
-        it recomputes with a shorter sequence (prompt + partial output).
+        Removes tail KV blocks from a running request without full preemption.
+        The request continues decoding with a reduced KV footprint.
 
-        This avoids the GPUModelRunner InputBatch block-table desync that
-        occurs with direct block removal. vLLM v1's InputBatch only appends
-        new blocks for cached requests; removing blocks directly causes the
-        model runner to reference freed block IDs → CUDA device-side assert.
-
-        Net effect:
-        - Full KV recovery (preemption frees all blocks)
-        - Lower recompute cost (fewer total tokens to prefill)
-        - Permanent KV footprint reduction (truncated output never returns)
-
-        Falls back to pure preemption if the request has no output tokens.
+        Steps:
+        1. Calculate how many blocks to free from target_tokens
+        2. Call kv_cache_manager.truncate_request_tail() (installed by
+           truncation_hook.py) to atomically free tail blocks
+        3. Update request's num_computed_tokens to match new boundary (INV-5)
+        4. Update internal token tracking
 
         Returns
         -------
         int
-            Actual tokens freed (full request KV via preemption).
+            Actual tokens freed.
         """
         if self._scheduler is None:
             return 0
 
+        # Get block size for token→block conversion
+        block_size = self._get_block_size()
+        if block_size <= 0:
+            return 0
+
+        # Check that truncation support is installed
+        kv_cache_manager = getattr(self._scheduler, "kv_cache_manager", None)
+        if kv_cache_manager is None or not hasattr(kv_cache_manager, "truncate_request_tail"):
+            return 0
+
+        # Calculate blocks to free (round up)
+        num_blocks_to_free = max(1, (target_tokens + block_size - 1) // block_size)
+
+        # Safety: synchronize GPU before freeing KV blocks.
+        # vLLM v1 uses async CUDA kernel launches — future.result() returns when
+        # the kernel is *launched*, not when it *finishes*.  Without sync, we
+        # could free blocks that the in-flight kernel is still reading, causing
+        # device-side assert.  Truncation events are rare (3 s cooldown), so the
+        # synchronize cost is negligible.
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+        except Exception:
+            pass  # non-CUDA env (unit tests): skip silently
+
+        # Attempt real KV block truncation
+        result = kv_cache_manager.truncate_request_tail(request_id, num_blocks_to_free)
+
+        if result.fallback_required:
+            logger.debug(
+                "Truncation failed: request=%s, reason=%s",
+                request_id,
+                result.reason,
+            )
+            return 0
+
+        if not result.success:
+            return 0
+
+        # INV-5: Update request state to match new block boundary.
+        # Must update BOTH num_computed_tokens AND output token tracking.
+        # Without this, the model runner sees inconsistent state:
+        #   num_computed_tokens = 16, but num_output_tokens = 38
+        # causing it to prepare input_ids for positions that have
+        # uninitialized token IDs in token_ids_cpu → embedding crash.
         requests_dict = getattr(self._scheduler, "requests", None)
-        if requests_dict is None:
-            return self._execute_recompute_fallback(request_id)
+        if requests_dict is not None:
+            request_obj = requests_dict.get(request_id)
+            if request_obj is not None:
+                old_computed = request_obj.num_computed_tokens
+                new_boundary = result.new_computed_token_boundary
+                num_prompt = getattr(request_obj, "num_prompt_tokens", 0)
 
-        request_obj = requests_dict.get(request_id)
-        if request_obj is None:
-            return self._execute_recompute_fallback(request_id)
+                request_obj.num_computed_tokens = new_boundary
 
-        # Truncate output tokens before preemption
-        output_tids = getattr(request_obj, "_output_token_ids", None)
-        all_tids = getattr(request_obj, "_all_token_ids", None)
-        num_prompt = getattr(request_obj, "num_prompt_tokens", 0)
-        current_output_len = len(output_tids) if output_tids else 0
+                # If truncation boundary is within the prompt,
+                # discard ALL output tokens (their KV is gone).
+                # If boundary is past the prompt, trim output tokens
+                # to match.
+                output_ids = getattr(request_obj, "_output_token_ids", None)
+                all_ids = getattr(request_obj, "_all_token_ids", None)
+                if output_ids is not None and num_prompt > 0:
+                    if new_boundary <= num_prompt:
+                        # Boundary in prompt: discard all output
+                        output_ids.clear()
+                    else:
+                        # Boundary past prompt: keep output up to boundary
+                        keep_output = new_boundary - num_prompt
+                        if keep_output < len(output_ids):
+                            del output_ids[keep_output:]
+                    # Sync _all_token_ids: prompt + remaining output
+                    if all_ids is not None:
+                        new_total = num_prompt + len(output_ids)
+                        if len(all_ids) > new_total:
+                            del all_ids[new_total:]
 
-        tokens_truncated = 0
-        if current_output_len > 0 and output_tids is not None and all_tids is not None:
-            tokens_to_cut = min(target_tokens, current_output_len)
-            if tokens_to_cut > 0:
-                new_output_len = current_output_len - tokens_to_cut
-                new_boundary = num_prompt + new_output_len
-                del output_tids[new_output_len:]
-                del all_tids[new_boundary:]
-                tokens_truncated = tokens_to_cut
-                logger.debug(
-                    "Truncated %d output tokens: request=%s (output: %d→%d, total: %d→%d)",
-                    tokens_to_cut,
-                    request_id,
-                    current_output_len,
-                    new_output_len,
-                    num_prompt + current_output_len,
-                    new_boundary,
+                _diag(
+                    f"truncation state: req={request_id} "
+                    f"old_computed={old_computed} new_boundary={new_boundary} "
+                    f"num_prompt={num_prompt} "
+                    f"output_tokens={len(output_ids) if output_ids else '?'} "
+                    f"all_tokens={len(all_ids) if all_ids else '?'}"
                 )
 
-        # Delegate to the safe native preemption path.
-        # This frees ALL KV blocks and moves the request to waiting.
-        # When re-scheduled, vLLM rebuilds the block table from scratch
-        # (resumed_from_preemption=True in GPUModelRunner).
-        freed = self._execute_recompute_fallback(request_id)
+        # Truncate internal token tracking to match
+        token_ids = self._request_tokens.get(request_id)
+        if token_ids is not None and len(token_ids) > result.new_computed_token_boundary:
+            del token_ids[result.new_computed_token_boundary :]
 
-        if freed > 0 and tokens_truncated > 0:
-            logger.debug(
-                "Truncation complete: request=%s, truncated=%d, freed=%d",
-                request_id,
-                tokens_truncated,
-                freed,
+        # Sync model runner's cached block table so GPU attention kernel
+        # only reads the new (truncated) block count.  Without this the
+        # model runner's ``num_blocks_per_row`` stays stale and the
+        # attention kernel accesses freed blocks → CUDA device-side assert.
+        self._sync_model_runner_block_table(request_id, result.new_num_blocks)
+
+        # Record metrics
+        self._metrics.record_compression(request_id, result.actual_freed_tokens)
+
+        logger.debug(
+            "Truncation: request=%s, freed=%d blocks (%d tokens), new_boundary=%d",
+            request_id,
+            result.actual_freed_blocks,
+            result.actual_freed_tokens,
+            result.new_computed_token_boundary,
+        )
+        return result.actual_freed_tokens
+
+    def _sync_model_runner_block_table(
+        self, request_id: str, new_num_blocks: int
+    ) -> None:
+        """Sync the model runner's cached state after tail-block truncation.
+
+        Uses ``add_row`` (full row overwrite) instead of just patching
+        ``num_blocks_per_row`` to guarantee no stale block-IDs remain in
+        the CPU numpy buffer that would be copied to GPU by
+        ``commit_block_table``.
+
+        Access path (UniProcExecutor, enforce-eager):
+          model_executor.driver_worker.worker.model_runner
+        """
+        executor = self._model_executor
+        if executor is None:
+            _diag("sync_block_table: no model_executor reference")
+            return
+
+        try:
+            # Navigate: executor → driver_worker → worker → model_runner
+            driver_worker = getattr(executor, "driver_worker", None)
+            if driver_worker is None:
+                _diag("sync_block_table: no driver_worker")
+                return
+            worker = getattr(driver_worker, "worker", None)
+            if worker is None:
+                _diag("sync_block_table: no worker")
+                return
+            model_runner = getattr(worker, "model_runner", None)
+            if model_runner is None:
+                _diag("sync_block_table: no model_runner")
+                return
+            input_batch = getattr(model_runner, "input_batch", None)
+            if input_batch is None:
+                _diag("sync_block_table: no input_batch")
+                return
+
+            req_id_to_index = getattr(input_batch, "req_id_to_index", None)
+            if req_id_to_index is None or request_id not in req_id_to_index:
+                _diag(f"sync_block_table: request {request_id} not in input_batch")
+                return
+            req_index = req_id_to_index[request_id]
+
+            # --- Collect real block IDs from coordinator ---
+            kv_mgr = getattr(self._scheduler, "kv_cache_manager", None)
+            coordinator = getattr(kv_mgr, "coordinator", None) if kv_mgr else None
+            if coordinator is None:
+                _diag("sync_block_table: no coordinator")
+                return
+
+            stms = getattr(coordinator, "single_type_managers", None) or []
+            real_block_ids: list[list[int]] = []
+            for mgr in stms:
+                blocks = mgr.req_to_blocks.get(request_id, [])
+                real_block_ids.append([b.block_id for b in blocks])
+
+            if not real_block_ids:
+                _diag("sync_block_table: no block IDs from coordinator")
+                return
+
+            # --- (1) Full overwrite of block table via add_row ---
+            multi_bt = getattr(input_batch, "block_table", None)
+            if multi_bt is not None:
+                block_tables = getattr(multi_bt, "block_tables", None) or getattr(
+                    multi_bt, "tables", None
+                )
+                if block_tables is not None:
+                    for i, group_bt in enumerate(block_tables):
+                        ids = real_block_ids[i] if i < len(real_block_ids) else []
+                        # add_row: sets num_blocks_per_row=0, then appends
+                        group_bt.add_row(ids, req_index)
+
+            # --- (2) Overwrite model_runner.requests[req_id].block_ids ---
+            mr_requests = getattr(model_runner, "requests", None)
+            if mr_requests is not None:
+                req_state = mr_requests.get(request_id)
+                if req_state is not None:
+                    block_ids_groups = getattr(req_state, "block_ids", None)
+                    if block_ids_groups is not None:
+                        for i, group_list in enumerate(block_ids_groups):
+                            new_ids = real_block_ids[i] if i < len(real_block_ids) else []
+                            group_list[:] = new_ids
+
+            # --- (3) Sync num_output_tokens_cpu to match ---
+            # The scheduler trimmed _output_token_ids, so model runner must
+            # be told the new count.  Also zero out stale token IDs beyond
+            # the new total to prevent the embedding layer from reading
+            # garbage values.
+            sched_req = (
+                getattr(self._scheduler, "requests", {}).get(request_id)
             )
+            if sched_req is not None:
+                num_prompt = getattr(sched_req, "num_prompt_tokens", 0)
+                n_output = len(getattr(sched_req, "_output_token_ids", []))
+                new_total = num_prompt + n_output
 
-        return freed
+                # Update model runner's output token count
+                nout_cpu = getattr(input_batch, "num_output_tokens_cpu", None)
+                if nout_cpu is not None and req_index < len(nout_cpu):
+                    nout_cpu[req_index] = n_output
+
+                # Zero stale token IDs in token_ids_cpu
+                tids = getattr(input_batch, "token_ids_cpu", None)
+                if tids is not None:
+                    # tids might be numpy or CpuGpuBuffer; get the numpy view
+                    tids_np = getattr(tids, "np", tids)
+                    if hasattr(tids_np, "__setitem__"):
+                        old_end = tids_np.shape[1] if tids_np.ndim > 1 else len(tids_np)
+                        if new_total < old_end:
+                            tids_np[req_index, new_total:] = 0
+                        _diag(
+                            f"sync_token_ids: zeroed positions "
+                            f"{new_total}+ for req_index={req_index}"
+                        )
+
+                # Also update model_runner.requests[].num_computed_tokens
+                if mr_requests is not None:
+                    mr_req = mr_requests.get(request_id)
+                    if mr_req is not None:
+                        nt = getattr(mr_req, "num_computed_tokens", None)
+                        if nt is not None:
+                            mr_req.num_computed_tokens = new_num_blocks * 16
+                            _diag(
+                                f"sync: mr_req.num_computed_tokens "
+                                f"{nt} -> {new_num_blocks * 16}"
+                            )
+
+            _diag(
+                f"sync_block_table: add_row OK request={request_id} "
+                f"req_index={req_index} blocks={[len(g) for g in real_block_ids]}"
+            )
+        except Exception:
+            logger.warning(
+                "Failed to sync model runner block table for request %s",
+                request_id,
+                exc_info=True,
+            )
+            _diag(f"sync_block_table: EXCEPTION for request={request_id}")
 
     def on_request_complete(self, request_id: str) -> None:
         """请求完成时清理 bid 和内部状态。"""
@@ -657,7 +791,7 @@ class VLLMAdapter(FrameworkAdapter):
             kill_switch=True,
             delta_budget=self._config.delta_budget,
             max_bids_per_solve=self._config.max_bids_per_solve,
-            execution_mode=self._config.execution_mode,
+            truncation_ratio=self._config.truncation_ratio,
         )
         self._pool_manager.activate_kill_switch()
         self._solver.update_config(
@@ -678,7 +812,7 @@ class VLLMAdapter(FrameworkAdapter):
             kill_switch=False,
             delta_budget=self._config.delta_budget,
             max_bids_per_solve=self._config.max_bids_per_solve,
-            execution_mode=self._config.execution_mode,
+            truncation_ratio=self._config.truncation_ratio,
         )
         self._pool_manager.enable()
         self._solver.update_config(

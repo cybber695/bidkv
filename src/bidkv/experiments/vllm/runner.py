@@ -271,10 +271,6 @@ class VLLMExperimentRunner:
 
         env = os.environ.copy()
         env["BIDKV_STRATEGY"] = strategy
-        # Pass execution mode to plugin
-        execution_mode = getattr(self._config.server, "execution_mode", None)
-        if execution_mode:
-            env["BIDKV_EXECUTION_MODE"] = execution_mode
         # Reduce log noise from vLLM
         env.setdefault("VLLM_LOGGING_LEVEL", "WARNING")
 
@@ -876,18 +872,18 @@ def parse_args(argv: list[str] | None = None) -> tuple[ExperimentConfig, bool]:
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.85)
     parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument(
+        "--max-num-batched-tokens",
+        type=int,
+        default=None,
+        help="Max tokens per scheduler step. Controls effective concurrency "
+        "(vLLM default 2048 → ~30 concurrent). Set higher for more concurrent requests.",
+    )
+    parser.add_argument(
         "--num-gpu-blocks-override",
         type=int,
         default=None,
         help="Override number of KV cache GPU blocks. Controls KV budget for "
         "pressure experiments (e.g. 800 blocks = ~12.8K tokens with block_size=16).",
-    )
-    parser.add_argument(
-        "--execution-mode",
-        type=str,
-        default="tail_truncation",
-        choices=["tail_truncation"],
-        help="BidKV execution mode: tail_truncation (truncate output + native preempt).",
     )
     parser.add_argument("--ttft-target-ms", type=float, default=2000.0)
     parser.add_argument("--warmup-requests", type=int, default=5)
@@ -928,8 +924,8 @@ def parse_args(argv: list[str] | None = None) -> tuple[ExperimentConfig, bool]:
             max_num_seqs=args.max_num_seqs,
             gpu_memory_utilization=args.gpu_memory_utilization,
             max_model_len=args.max_model_len,
+            max_num_batched_tokens=args.max_num_batched_tokens,
             num_gpu_blocks_override=args.num_gpu_blocks_override,
-            execution_mode=args.execution_mode,
         ),
         slo=SLOConfig(ttft_target_ms=args.ttft_target_ms),
         warmup_requests=args.warmup_requests,

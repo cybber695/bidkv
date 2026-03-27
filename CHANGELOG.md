@@ -6,6 +6,18 @@ All notable changes to this project will be documented in this file.
 
 ### Removed
 
+- **Mode A (recompute_fallback) 彻底移除**:
+  - 删除 `BidKVConfig.execution_mode` 字段和 `_VALID_EXECUTION_MODES` 验证
+  - 删除 `VLLMAdapter._execute_recompute_fallback()` 方法（~70 LOC）
+  - `_execute_tail_truncation()` 失败时不再 fallback 到 recompute，直接返回 0
+  - 移除 `plugin.py` 中 `BIDKV_EXECUTION_MODE` 环境变量读取
+  - 移除实验 runner `--execution-mode` CLI 参数
+  - 移除 `VLLMServerConfig.execution_mode` 字段
+  - 清理 vLLM/SGLang adapter kill switch 中 `execution_mode` 引用
+  - 重命名 `_mode_b_proactive_preempt` → `_proactive_preempt`
+  - 更新测试：移除 5 个 recompute fallback 测试，新增 no-truncation-returns-zero 测试
+  - 465 tests passing, ruff clean
+
 - **Oracle-DP 策略完整移除**:
   - 删除 `src/bidkv/baselines/oracle_dp.py` 及所有 import/export/registry 注册
   - 从 vLLM 和 SGLang 实验配置中移除 oracle-dp 策略

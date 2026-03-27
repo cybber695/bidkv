@@ -86,8 +86,10 @@ class VLLMServerConfig:
     enforce_eager: bool = True
     disable_frontend_multiprocessing: bool = True
     max_model_len: int = 8192
+    max_num_batched_tokens: int | None = None
     num_gpu_blocks_override: int | None = None
-    execution_mode: str = "tail_truncation"
+    enable_prefix_caching: bool = False  # Disabled: truncation frees blocks
+    # without cleaning prefix cache index, causing stale hits → CUDA crash.
     host: str = "127.0.0.1"
     port: int = 8000
 
@@ -121,8 +123,12 @@ class VLLMServerConfig:
             args.append("--disable-frontend-multiprocessing")
         if self.max_model_len:
             args.extend(["--max-model-len", str(self.max_model_len)])
+        if self.max_num_batched_tokens is not None:
+            args.extend(["--max-num-batched-tokens", str(self.max_num_batched_tokens)])
         if self.num_gpu_blocks_override is not None:
             args.extend(["--num-gpu-blocks-override", str(self.num_gpu_blocks_override)])
+        if not self.enable_prefix_caching:
+            args.append("--no-enable-prefix-caching")
         return args
 
 

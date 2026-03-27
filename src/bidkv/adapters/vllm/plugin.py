@@ -66,7 +66,6 @@ def _install_bidkv(scheduler: object, strategy_name: str) -> None:
         enabled=True,
         kill_switch=False,
         delta_budget=0.30,
-        execution_mode=os.environ.get("BIDKV_EXECUTION_MODE", "tail_truncation"),
         truncation_ratio=float(os.environ.get("BIDKV_TRUNCATION_RATIO", "0.5")),
     )
     scoring = H2OScoring()
