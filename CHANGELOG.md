@@ -11,6 +11,11 @@ All notable changes to this project will be documented in this file.
   - 修复：引入与 BidKV 相同的 `compression_levels=(0.2, 0.4, 0.6)`，为每个 candidate × 每个 level 生成 option，混合按 utility 贪心选择
   - 保持归因纯净：GlobalNoBid 与 BidKV 唯一差异 = 无 BidPool/Solver 协议（系统直接推断 vs 用户显式 bid）
   - 约束对齐：约束 A（每 request 最多 1 bid）+ 约束 B（Σδ ≤ budget）与 GreedyBidSolver 完全一致
+  - 验证：修复后 GlobalNoBid 产出 107 compressions（修复前=0），BidKV 仍显著优于（100% vs 80% success, 2.45 vs 1.23 rps）
+
+- **scheduler_hook 归因路由统一**:
+  - `_proactive_preempt` 中 BidKV 之前走硬编码 `_compute_keep_score()` 路径而非 `select_victims()`，导致归因不纯
+  - 修复：所有策略（含 BidKV）统一走 `select_victims()` 路径，`_compute_keep_score()` 仅在无策略时作为 fallback
   - 465 tests passing, ruff clean
 
 ### Removed
