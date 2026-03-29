@@ -69,6 +69,19 @@ class GlobalNoBidStrategy(BaselineStrategy):
         """当前使用的 H2OScoring 实例。"""
         return self._scoring
 
+    @staticmethod
+    def _completion_factor(req: RequestState) -> float:
+        """Compute recompute-cost penalty for near-completion candidates.
+
+        Same logic as BidKVStrategy._completion_factor — keeps ablation clean
+        (the only difference is bid protocol vs direct greedy).
+        """
+        if req.max_output_tokens <= 0 or req.num_computed_tokens <= 0:
+            return 1.0
+        num_output = max(0, req.num_computed_tokens - req.num_prompt_tokens)
+        completion = min(1.0, num_output / req.max_output_tokens)
+        return 1.0 + completion * completion * 4.0
+
     def select_victims(
         self,
         candidates: list[RequestState],
@@ -112,6 +125,11 @@ class GlobalNoBidStrategy(BaselineStrategy):
 
             scorer = scoring_states.get(req.request_id, self._scoring)
             scores = scorer.score(req.token_ids) if req.token_ids else []
+
+            # Completion-aware penalty: inflate scores for near-completion requests
+            completion_factor = self._completion_factor(req)
+            if completion_factor > 1.0:
+                scores = [min(1.0, s * completion_factor) for s in scores]
 
             for level in self._compression_levels:
                 tokens_freed = max(1, int(req.current_tokens * level))

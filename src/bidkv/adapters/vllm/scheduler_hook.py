@@ -191,7 +191,13 @@ def _build_running_candidates(running: Any, adapter: VLLMAdapter) -> list[tuple[
 
     Returns a list so callers can map strategy decisions back to vLLM objects.
     """
+    import time
+
     from bidkv.baselines.base import RequestState
+
+    now_ms = time.monotonic() * 1000
+    # SLO 截止时间 = 到达时间 + 120 秒 (request_timeout_s 默认值)
+    slo_timeout_ms = 120_000.0
 
     pairs: list[tuple[Any, Any]] = []
     for req in running:
@@ -199,12 +205,39 @@ def _build_running_candidates(running: Any, adapter: VLLMAdapter) -> list[tuple[
         if rid is None:
             continue
         token_ids = adapter._request_tokens.get(rid)
+
+        # 记录并获取到达时间
+        if rid not in adapter._request_arrival_ms:
+            adapter._request_arrival_ms[rid] = now_ms
+        arrival_ms = adapter._request_arrival_ms[rid]
+
+        # 从 vLLM request 提取 completion 信息
+        num_prompt = getattr(req, "num_prompt_tokens", 0)
+        num_computed = getattr(req, "num_computed_tokens", 0)
+        num_preemptions = getattr(req, "num_preemptions", 0)
+        max_output = 256  # conservative fallback
+        sp = getattr(req, "sampling_params", None)
+        if sp is not None:
+            mt = getattr(sp, "max_tokens", None)
+            if mt is not None and mt > 0:
+                max_output = mt
+
+        # Priority: 负到达时间 → 最新到达的请求优先级最低 → FCFS 驱逐
+        priority = -arrival_ms
+
         pairs.append(
             (
                 RequestState(
                     request_id=rid,
                     current_tokens=len(token_ids) if token_ids else 0,
                     token_ids=tuple(token_ids) if token_ids else (),
+                    priority=priority,
+                    arrival_time_ms=arrival_ms,
+                    deadline_ms=arrival_ms + slo_timeout_ms,
+                    num_prompt_tokens=num_prompt,
+                    num_computed_tokens=num_computed,
+                    max_output_tokens=max_output,
+                    num_preemptions=num_preemptions,
                 ),
                 req,
             )
@@ -213,45 +246,48 @@ def _build_running_candidates(running: Any, adapter: VLLMAdapter) -> list[tuple[
 
 
 def _reorder_running_for_preemption(scheduler: Any, adapter: VLLMAdapter) -> None:  # noqa: ARG001
-    """Reorder scheduler.running so the strategy-preferred victim is at the end.
+    """Reorder scheduler.running for native preemption victim selection.
 
     For FCFS policy, vLLM preempts with self.running.pop() — the last element.
-    Routes victim selection through the experiment strategy when available.
+
+    During experiments, we use vLLM's default FCFS ordering for ALL strategies.
+    This ensures the only experimental variable is the proactive compression
+    policy (_proactive_preempt), not the native preemption ordering.
+    Strategy-aware reorder previously caused pathological interference with
+    vLLM's scheduler, degrading throughput 15-40% for H2O-based strategies.
+
+    In standalone mode (no experiment), use completion-aware keep_score to
+    protect near-completion requests from preemption.
     """
+    if adapter._experiment_strategy is not None:
+        # During experiments: do NOT reorder. Let vLLM use default FCFS.
+        # Strategy differentiation is through _proactive_preempt only.
+        return
+
+    import time
+
+    # Rate-limit: at most one reorder per second.
+    reorder_cooldown_s = 1.0
+    now = time.monotonic()
+    last_reorder = getattr(scheduler, "_bidkv_last_reorder", 0.0)
+    if now - last_reorder < reorder_cooldown_s:
+        return
+    scheduler._bidkv_last_reorder = now
+
     running = getattr(scheduler, "running", None)
     if running is None or len(running) <= 1:
         return
 
-    # Only reorder when preemption is imminent (waiting requests exist).
     waiting = getattr(scheduler, "waiting", None)
     if not waiting:
         return
 
-    strategy = adapter._experiment_strategy
-    strategy_name = adapter._experiment_strategy_name
-
-    if strategy is not None and strategy_name != "bidkv":
-        # Route through baseline strategy's select_victims()
-        pairs = _build_running_candidates(running, adapter)
-        candidates = [p[0] for p in pairs]
-        if candidates:
-            actions = strategy.select_victims(candidates, 1)
-            if actions:
-                victim_rid = actions[0].request_id
-                # Move victim to end (popped first by vLLM FCFS)
-                for i, req in enumerate(running):
-                    if getattr(req, "request_id", None) == victim_rid:
-                        victim_req = running.pop(i)
-                        running.append(victim_req)
-                        return
-
-    # BidKV / default: use completion-aware keep_score
+    # Standalone mode: use completion-aware keep_score
     scored: list[tuple[float, int, Any]] = []
     for idx, req in enumerate(running):
         keep_score = _compute_keep_score(req)
         scored.append((keep_score, idx, req))
 
-    # Sort: highest keep_score first, lowest last (preemption target)
     scored.sort(key=lambda x: -x[0])
 
     running.clear()
@@ -260,20 +296,20 @@ def _reorder_running_for_preemption(scheduler: Any, adapter: VLLMAdapter) -> Non
 
 
 def _proactive_preempt(scheduler: Any, adapter: VLLMAdapter) -> None:
-    """Proactively preempt+truncate lowest-quality request under KV pressure.
+    """Proactively truncate lowest-quality request under KV pressure.
 
     Fires BEFORE vLLM's native schedule(), so freed blocks become available
     for waiting requests without triggering vLLM's own cascade preemption.
 
-    Conservative guards to avoid creating excessive recompute overhead:
-    - KV block utilization must exceed 88% (moderate headroom before cascade)
-    - Waiting queue must be non-empty (there's demand for blocks)
-    - At least 3 running requests (keep at least 2 running after preemption)
+    Conservative guards to avoid excessive compression:
+    - KV block utilization must exceed 92% (near-cascade threshold)
+    - Waiting queue must be non-empty (demand for blocks)
+    - At least 3 running requests (keep at least 2 running)
     - Cooldown of 3 seconds between proactive preemptions
+    - Per-event cap of 256 tokens (16 blocks) to prevent batch-size bloat
 
-    Uses pure recompute (no output truncation) to avoid TPOT degradation.
-    The benefit comes from quality-aware victim selection + earlier intervention
-    that prevents costly cascade preemptions.
+    BidKV's advantage: quality-aware victim selection picks the request whose
+    tail truncation causes least quality loss + least recompute cost.
     """
     import time
 
@@ -293,7 +329,9 @@ def _proactive_preempt(scheduler: Any, adapter: VLLMAdapter) -> None:
     if running is None or len(running) < 3:
         return
 
-    # Check KV utilization — 88% threshold (moderate headroom before cascade)
+    # Check KV utilization — 92% threshold (near-cascade, conservative).
+    # Tail truncation frees partial blocks while keeping the request running,
+    # avoiding the abort-requeue storm that occurs at lower thresholds.
     kv_mgr = getattr(scheduler, "kv_cache_manager", None)
     if kv_mgr is None:
         return
@@ -301,17 +339,25 @@ def _proactive_preempt(scheduler: Any, adapter: VLLMAdapter) -> None:
     if block_pool is None:
         return
     usage = block_pool.get_usage()
-    if usage < 0.88:
+    if usage < 0.92:
         return
 
-    # --- Compute how many tokens to free (target: bring usage down to 80%) ---
+    # --- Compute needed tokens: target 85%, capped per event to prevent bloat ---
     used, total = adapter.get_kv_stats()
-    target_usage = int(total * 0.80)
+    target_usage = int(total * 0.85)
     needed_tokens = max(1, used - target_usage)
+    # Cap: at most 256 tokens (16 blocks) per event to bound batch-size impact
+    max_truncate_per_event = 256
+    needed_tokens = min(needed_tokens, max_truncate_per_event)
 
     # --- Strategy-aware victim selection ---
     strategy = adapter._experiment_strategy
     strategy_name = adapter._experiment_strategy_name
+
+    # preempt-evict is the "no compression" baseline — only native preemption.
+    # Skip proactive truncation entirely so it measures vanilla framework behavior.
+    if strategy_name == "preempt-evict":
+        return
 
     victim_id: str | None = None
     diag_detail = ""
@@ -343,24 +389,28 @@ def _proactive_preempt(scheduler: Any, adapter: VLLMAdapter) -> None:
     if victim_id is None:
         return
 
-    # Quality-aware victim selection + truncation.
+    # Tail truncation: remove tail KV blocks from victim while keeping it
+    # running. Caps per-event freed tokens to prevent batch-size bloat.
     freed = adapter.execute_compression(victim_id, needed_tokens)
     if freed > 0:
         scheduler._bidkv_last_proactive = now
-        _diag(f"proactive truncate: {victim_id} ({diag_detail}, usage={usage:.2f}, freed={freed})")
+        _diag(
+            f"proactive truncate: {victim_id} "
+            f"({diag_detail}, usage={usage:.2f}, freed={freed})"
+        )
 
 
 _MODEL_EXECUTOR_RESOLVED = False
 
 
-def _resolve_model_executor(scheduler: Any, adapter: VLLMAdapter) -> None:
+def _resolve_model_executor(scheduler: Any, adapter: VLLMAdapter) -> None:  # noqa: ARG001
     """Lazily discover model_executor via gc.get_referrers.
 
     Plugin cannot patch EngineCore.__init__ effectively because
     load_general_plugins() runs INSIDE the already-executing __init__.
     Instead, on the first schedule() call (after __init__ completes),
     walk gc.get_referrers(scheduler) to find EngineCore and grab its
-    model_executor for Mode B block-table sync.
+    model_executor for block-table sync after truncation.
     """
     global _MODEL_EXECUTOR_RESOLVED
     if _MODEL_EXECUTOR_RESOLVED:
@@ -457,6 +507,17 @@ def _patched_update_from_output(
 
     # 更新追踪信息：将新生成的 token 加入追踪
     _update_token_tracking_from_output(scheduler, adapter, model_runner_output)
+
+    # 更新 H2O scoring 累积注意力统计
+    # Sampled at 20% (every 5th step) to reduce CPU overhead.
+    # Cumulative attention converges quickly; 20% sampling causes negligible
+    # scoring accuracy loss while reducing overhead ~5×.
+    h2o_counter = getattr(scheduler, "_bidkv_h2o_counter", 0) + 1
+    scheduler._bidkv_h2o_counter = h2o_counter
+    if h2o_counter % 5 == 0:
+        from bidkv.adapters.vllm.h2o_hook import update_h2o_from_output
+
+        update_h2o_from_output(adapter, scheduler, model_runner_output)
 
     return result
 

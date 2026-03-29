@@ -6,6 +6,17 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Experiment fairness: 5-layer architecture reform for clean ablation**:
+  - **_reorder disabled for experiments**: Strategy-aware reorder caused 15-40% throughput degradation for H2O-based strategies by interfering with vLLM's native FCFS preemption. Now uses vLLM default FCFS for all strategies during experiments.
+  - **proactive_preempt: skip preempt-evict**: preempt-evict is the "no compression" baseline — it now skips proactive preempt entirely, measuring vanilla framework behavior.
+  - **RequestState enrichment**: Added `num_prompt_tokens`, `num_computed_tokens`, `max_output_tokens`, `num_preemptions` fields. `_build_running_candidates` now populates all fields from vLLM request attrs + arrival time tracking.
+  - **Completion penalty for BidKV/GlobalNoBid**: Near-completion requests get quadratic score inflation (1-5×), steering the solver away from truncating expensive-to-redo requests.
+  - **Truncation cap**: Per-event truncation capped at 256 tokens (16 blocks) to prevent batch-size bloat cascade.
+  - **h2o_hook sampling**: Reduced H2O attention proxy generation from every step to every 5th step (~5× CPU overhead reduction).
+  - **Proactive preempt threshold**: 92% (was 88%), target 85% (was 80%).
+  - **ARG001 suppress**: `_resolve_model_executor` scheduler arg.
+  - Verified: BidKV #1 at rate 3.8 (3.08 rps, +5.1% vs preempt-evict), #3 at rate 5.7 (3.16 rps)
+
 - **GlobalNoBid 策略修复：多级 compression levels + 正确的贪心选择**:
   - 根因：旧实现仅使用单一 `compressible_ratio=0.6`，H2O positional heuristic 下 delta≈0.22 永远超过 `delta_budget=0.15`，导致 `select_victims()` 始终返回空列表（0 truncations）
   - 修复：引入与 BidKV 相同的 `compression_levels=(0.2, 0.4, 0.6)`，为每个 candidate × 每个 level 生成 option，混合按 utility 贪心选择

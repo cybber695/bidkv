@@ -28,6 +28,14 @@ class RequestState:
         SLO 截止时间戳（单调毫秒）。None 表示无 SLO。
     token_ids:
         该请求的 token ID 序列（用于 scoring）。可为空。
+    num_prompt_tokens:
+        Prompt token 数量。默认 0。
+    num_computed_tokens:
+        已计算的总 token 数量（prompt + output so far）。默认 0。
+    max_output_tokens:
+        最大输出 token 数量（来自 sampling_params）。默认 0（未知）。
+    num_preemptions:
+        该请求被 preempt 的次数。默认 0。
     """
 
     request_id: str
@@ -36,6 +44,10 @@ class RequestState:
     arrival_time_ms: float = 0.0
     deadline_ms: float | None = None
     token_ids: tuple[int, ...] = ()
+    num_prompt_tokens: int = 0
+    num_computed_tokens: int = 0
+    max_output_tokens: int = 0
+    num_preemptions: int = 0
 
 
 @dataclass(frozen=True)

@@ -112,6 +112,8 @@ class VLLMAdapter(FrameworkAdapter):
         # 请求追踪
         # {request_id: list[int]} — 每个请求的 token ids
         self._request_tokens: dict[str, list[int]] = {}
+        # {request_id: float} — 每个请求的到达时间 (monotonic ms)
+        self._request_arrival_ms: dict[str, float] = {}
         # 已安装标记
         self._installed: bool = False
         # 原始方法备份（用于 uninstall）
@@ -121,7 +123,7 @@ class VLLMAdapter(FrameworkAdapter):
         self._metrics = AdapterMetrics()
 
         # Model executor reference (set by plugin.py after EngineCore init).
-        # Used by Mode B truncation to sync model runner's cached block table.
+        # Used by truncation to sync model runner's cached block table.
         self._model_executor: Any = None
 
         logger.info(
@@ -271,6 +273,40 @@ class VLLMAdapter(FrameworkAdapter):
             return 0
 
         return self._execute_tail_truncation(request_id, target_tokens)
+
+    def execute_abort(self, request_id: str) -> int:
+        """Abort a running request via vLLM scheduler.abort_requests().
+
+        The request is removed from running and requeued to waiting.
+        All its KV blocks are freed immediately. The request will be
+        recomputed from scratch when scheduled again.
+
+        Returns the estimated number of tokens freed (= num_computed_tokens).
+        """
+        if not self._config.is_active:
+            return 0
+
+        scheduler = self._scheduler
+        if scheduler is None:
+            return 0
+
+        # Find victim in running to estimate freed tokens
+        freed_tokens = 0
+        for req in getattr(scheduler, "running", []):
+            if getattr(req, "request_id", None) == request_id:
+                freed_tokens = getattr(req, "num_computed_tokens", 0)
+                break
+
+        if freed_tokens <= 0:
+            return 0
+
+        try:
+            scheduler.abort_requests([request_id])
+        except Exception:  # noqa: BLE001
+            return 0
+
+        self._metrics.record_compression(request_id, freed_tokens)
+        return freed_tokens
 
     def _execute_tail_truncation(self, request_id: str, target_tokens: int) -> int:
         """Token-level KV block truncation.
@@ -523,10 +559,12 @@ class VLLMAdapter(FrameworkAdapter):
                     if mr_req is not None:
                         nt = getattr(mr_req, "num_computed_tokens", None)
                         if nt is not None:
-                            mr_req.num_computed_tokens = new_num_blocks * 16
+                            actual_block_size = self._get_block_size() or 16
+                            new_computed = new_num_blocks * actual_block_size
+                            mr_req.num_computed_tokens = new_computed
                             _diag(
                                 f"sync: mr_req.num_computed_tokens "
-                                f"{nt} -> {new_num_blocks * 16}"
+                                f"{nt} -> {new_computed}"
                             )
 
             _diag(
@@ -545,6 +583,7 @@ class VLLMAdapter(FrameworkAdapter):
         """请求完成时清理 bid 和内部状态。"""
         self._pool_manager.remove_by_request(request_id)
         self._request_tokens.pop(request_id, None)
+        self._request_arrival_ms.pop(request_id, None)
         self._metrics.record_request_complete(request_id)
         logger.debug("on_request_complete: request=%s", request_id)
 
