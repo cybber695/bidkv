@@ -655,7 +655,16 @@ class VLLMAdapter(FrameworkAdapter):
         return states
 
     def _execute_baseline_actions(self, actions: list[CompressionAction]) -> int:
-        """Execute CompressionAction list from a baseline strategy."""
+        """Execute CompressionAction list from a baseline strategy.
+
+        Intentional design: action.action_type ('evict' / 'compress') is
+        deliberately ignored here. All strategies share the same underlying
+        execution path (execute_compression → _execute_tail_truncation) to
+        ensure a single-variable experiment — the only difference between
+        strategies is *which* requests are selected as victims, not *how*
+        the KV is freed. Routing evict vs compress to different mechanisms
+        would introduce a confounding variable and compromise fairness.
+        """
         total_freed = 0
         for action in actions:
             freed = self.execute_compression(action.request_id, action.target_tokens)
