@@ -2,22 +2,24 @@
 
 将 BidKV 智能 victim 选择注入到 vLLM v1 Scheduler 的调度路径中。
 
-注入点（v2 — victim reorder + proactive preemption）：
+**Mode A 架构（v3 — pure native preemption）**：
+策略控制 *WHO* gets preempted，执行机制是 vLLM native preempt+recompute。
+不做 tail truncation / block-level 操作。
+
+注入点：
 - ``schedule()``：
-  1. 重排 running 列表（victim reorder）— 当 vLLM 需要 preempt 时，
-     选择 BidKV 评分最低的请求。
-  2. 在 schedule() 之前检查 KV 利用率，当利用率超过阈值且有 waiting
-     请求时，主动 preempt 最低质量请求，防止级联 preemption。
-     有严格 cooldown 防止 thrashing。
-- ``update_from_output()``：decode step 完成后，更新 token tracking。
-- ``_free_request()``：请求完成时，清理 BidKV 内部状态。
-- ``update_from_output()``：decode step 完成后，更新 token tracking。
-- ``_free_request()``：请求完成时，清理 BidKV 内部状态。
+  1. 定期刷新策略优先级缓存（每 3s，调用 strategy.select_victims()）
+  2. 主动 preempt：KV > 阈值时，用 scheduler._preempt_request() 驱逐
+     策略选中的 victim（单 victim + 5s cooldown 防 storm）
+  3. 重排 running 列表：用缓存优先级影响 vLLM native preemption 的
+     victim 选择（running.pop() FCFS）
+- ``update_from_output()``：decode step 后更新 token tracking + H2O。
+- ``_free_request()``：请求完成时清理 BidKV 状态。
 
 设计原则：
-- **质量感知**：BidKV scoring 选择最可牺牲的请求（recompute cost × anti-starvation）
-- **主动压缩**：在 KV 高压时 proactively preempt，减少级联 preemption
-- **Feature OFF 零开销**：BidKV 未激活时，monkey-patch 方法直接调用原始方法
+- **纯 Mode A**：策略只做 `decision`（谁被 preempt），不做 `execution`
+- **生效双路径**：proactive preempt（主动）+ reorder（影响 native preemption）
+- **Feature OFF 零开销**：BidKV 未激活时直接调用原始方法
 - **可逆**：``uninstall_scheduler_hook()`` 可恢复原始方法
 """
 
@@ -245,75 +247,207 @@ def _build_running_candidates(running: Any, adapter: VLLMAdapter) -> list[tuple[
     return pairs
 
 
-def _reorder_running_for_preemption(scheduler: Any, adapter: VLLMAdapter) -> None:  # noqa: ARG001
+def _reorder_waiting_for_admission(scheduler: Any, adapter: VLLMAdapter) -> None:
+    """Reorder scheduler.waiting for optimal admission under KV pressure.
+
+    vLLM processes waiting[0] first and BREAKS on first allocation failure.
+    Each strategy represents a COMPLETE scheduling approach with its own
+    admission policy. The differentiation is in the key function:
+
+    Strategy grouping by admission key:
+    ┌─────────────────┬──────────────────────────────────────────────┐
+    │ Strategy        │ Admission policy                             │
+    ├─────────────────┼──────────────────────────────────────────────┤
+    │ preempt-evict   │ FCFS — no reorder (true vLLM default)       │
+    │ static-random   │ SJF by prompt_tokens                        │
+    │ h2o-style       │ SJF by prompt_tokens                        │
+    │ uniform         │ SJF by prompt_tokens                        │
+    │ global-nobid    │ SJF by prompt_tokens                        │
+    │ slack-aware     │ EDF by arrival_time (≈ FCFS under uniform SLO) │
+    │ bidkv           │ SJF by prompt_tokens (same as other SJF)    │
+    └─────────────────┴──────────────────────────────────────────────┘
+
+    BidKV's advantage is NOT in admission ordering (all SJF strategies
+    use prompt_tokens). The differentiation comes from quality-aware
+    preemption via select_victims() using U = r / (δ + ε).
+    preempt-evict is the true zero-intelligence baseline
+    (FCFS waiting + LIFO preemption = vanilla vLLM behaviour).
+    """
+    import time
+
+    strategy_name = adapter._experiment_strategy_name
+
+    waiting = getattr(scheduler, "waiting", None)
+    if waiting is None or len(waiting) <= 1:
+        return
+
+    now = time.monotonic()
+
+    if strategy_name == "preempt-evict":
+        # preempt-evict: FCFS — no reorder. True vLLM default behaviour.
+        return
+
+    elif strategy_name == "slack-aware":
+        # slack-aware: EDF — tightest deadline first.
+        # Under uniform SLO, this approximates FCFS (arrival order).
+        def _deadline_key(req: Any) -> float:
+            rid = getattr(req, "request_id", "")
+            arrival = adapter._request_arrival_ms.get(rid, now * 1000)
+            return arrival
+
+        waiting_list = list(waiting)
+        waiting_list.sort(key=_deadline_key)
+        waiting.clear()
+        for req in waiting_list:
+            waiting.append(req)
+
+    else:
+        # All SJF strategies (static-random, h2o-style, uniform,
+        # global-nobid, bidkv): SJF by prompt_tokens.
+        # max_tokens is a standard API param accessible to all — NOT a
+        # bid signal — so admission uses prompt_tokens only.
+        waiting_list = list(waiting)
+        waiting_list.sort(key=lambda r: getattr(r, "num_prompt_tokens", 0))
+        waiting.clear()
+        for req in waiting_list:
+            waiting.append(req)
+
+
+def _reorder_running_for_preemption(scheduler: Any, adapter: VLLMAdapter) -> None:
     """Reorder scheduler.running for native preemption victim selection.
 
     For FCFS policy, vLLM preempts with self.running.pop() — the last element.
+    We put the MOST EXPENDABLE request at the END so it gets preempted first.
 
-    During experiments, we use vLLM's default FCFS ordering for ALL strategies.
-    This ensures the only experimental variable is the proactive compression
-    policy (_proactive_preempt), not the native preemption ordering.
-    Strategy-aware reorder previously caused pathological interference with
-    vLLM's scheduler, degrading throughput 15-40% for H2O-based strategies.
-
-    In standalone mode (no experiment), use completion-aware keep_score to
-    protect near-completion requests from preemption.
+    Strategy differentiation through running-queue reorder:
+    ┌─────────────────┬──────────────────────────────────────────────┐
+    │ Strategy        │ Preemption ordering                          │
+    ├─────────────────┼──────────────────────────────────────────────┤
+    │ preempt-evict   │ NO reorder — pure vLLM default (LIFO)       │
+    │ static-random   │ select_victims(): random victim selection    │
+    │ h2o-style       │ select_victims(): attention-importance based │
+    │ uniform         │ select_victims(): equal treatment            │
+    │ global-nobid    │ select_victims(): system heuristic w/o bids  │
+    │ slack-aware     │ select_victims(): SLO-slack based            │
+    │ bidkv           │ select_victims(): bid-informed priority      │
+    └─────────────────┴──────────────────────────────────────────────┘
     """
-    if adapter._experiment_strategy is not None:
-        # During experiments: do NOT reorder. Let vLLM use default FCFS.
-        # Strategy differentiation is through _proactive_preempt only.
-        return
+    strategy_name = adapter._experiment_strategy_name
 
-    import time
-
-    # Rate-limit: at most one reorder per second.
-    reorder_cooldown_s = 1.0
-    now = time.monotonic()
-    last_reorder = getattr(scheduler, "_bidkv_last_reorder", 0.0)
-    if now - last_reorder < reorder_cooldown_s:
+    # preempt-evict: NO reorder — measures pure vLLM default behavior.
+    # vLLM uses running.pop() = LIFO, which evicts the most recently added.
+    if strategy_name == "preempt-evict":
         return
-    scheduler._bidkv_last_reorder = now
 
     running = getattr(scheduler, "running", None)
     if running is None or len(running) <= 1:
         return
 
-    waiting = getattr(scheduler, "waiting", None)
-    if not waiting:
-        return
+    # Use strategy-specific cached priority from select_victims()
+    cached = getattr(adapter, "_cached_preempt_priority", None)
+    if cached:
+        # Higher priority = more valuable = placed at FRONT (protected)
+        # Lower priority = victim = placed at END (preempted by running.pop())
+        scored = []
+        for idx, req in enumerate(running):
+            rid = getattr(req, "request_id", "")
+            priority = cached.get(rid, float("inf"))
+            scored.append((priority, idx, req))
+        scored.sort(key=lambda x: (-x[0], x[1]))
+        running.clear()
+        for _, _, req in scored:
+            running.append(req)
+    else:
+        # Before first cache refresh: use universal keep-score heuristic
+        scored = [((_compute_keep_score(req), idx), req) for idx, req in enumerate(running)]
+        scored.sort(key=lambda x: -x[0][0])
+        running.clear()
+        for _, req in scored:
+            running.append(req)
 
-    # Standalone mode: use completion-aware keep_score
-    scored: list[tuple[float, int, Any]] = []
-    for idx, req in enumerate(running):
-        keep_score = _compute_keep_score(req)
-        scored.append((keep_score, idx, req))
 
-    scored.sort(key=lambda x: -x[0])
+def _refresh_priority_cache(scheduler: Any, adapter: VLLMAdapter) -> None:
+    """Refresh cached preemption priority using current strategy.
 
-    running.clear()
-    for _, _, req in scored:
-        running.append(req)
+    Called every 3 seconds. Runs strategy.select_victims() to get the
+    priority ordering, then caches it for _reorder_running_for_preemption.
 
-
-def _proactive_preempt(scheduler: Any, adapter: VLLMAdapter) -> None:
-    """Proactively truncate lowest-quality request under KV pressure.
-
-    Fires BEFORE vLLM's native schedule(), so freed blocks become available
-    for waiting requests without triggering vLLM's own cascade preemption.
-
-    Conservative guards to avoid excessive compression:
-    - KV block utilization must exceed 92% (near-cascade threshold)
-    - Waiting queue must be non-empty (demand for blocks)
-    - At least 3 running requests (keep at least 2 running)
-    - Cooldown of 3 seconds between proactive preemptions
-    - Per-event cap of 256 tokens (16 blocks) to prevent batch-size bloat
-
-    BidKV's advantage: quality-aware victim selection picks the request whose
-    tail truncation causes least quality loss + least recompute cost.
+    Strategy differentiation happens here: BidKV uses bid+quality scoring,
+    h2o uses attention, uniform uses equal weights, etc.
     """
     import time
 
-    cooldown_s = 3.0
+    refresh_interval_s = 3.0
+    now = time.monotonic()
+    last_refresh = getattr(adapter, "_last_priority_refresh", 0.0)
+    if now - last_refresh < refresh_interval_s:
+        return
+    adapter._last_priority_refresh = now
+
+    strategy = adapter._experiment_strategy
+    strategy_name = adapter._experiment_strategy_name
+
+    # preempt-evict: no priority cache needed
+    if strategy_name == "preempt-evict" or strategy is None:
+        return
+
+    running = getattr(scheduler, "running", None)
+    if running is None or len(running) < 2:
+        return
+
+    pairs = _build_running_candidates(running, adapter)
+    candidates = [p[0] for p in pairs]
+    if len(candidates) < 2:
+        return
+
+    # Use total KV as needed_tokens to get full ordering (all candidates ranked)
+    needed_all = sum(c.current_tokens for c in candidates) or 1
+
+    try:
+        actions = strategy.select_victims(candidates, needed_all)
+    except Exception:  # noqa: BLE001
+        return
+
+    # Build priority: victims are expendable (low priority).
+    # actions[0] = most expendable (first to be preempted).
+    # Requests NOT in actions list are most valuable.
+    victim_ids = [a.request_id for a in actions]
+    priority: dict[str, float] = {}
+
+    # Most expendable gets lowest score; later victims get slightly higher
+    n_victims = len(victim_ids)
+    for i, rid in enumerate(victim_ids):
+        priority[rid] = float(i)  # 0 = most expendable
+
+    # Requests not selected as victims: very high priority (keep)
+    for pair in pairs:
+        if pair[0].request_id not in priority:
+            priority[pair[0].request_id] = float(n_victims + 100)
+
+    adapter._cached_preempt_priority = priority
+
+
+def _proactive_preempt(scheduler: Any, adapter: VLLMAdapter) -> None:
+    """Mode A proactive preemption using vLLM native _preempt_request().
+
+    When KV pressure exceeds threshold, selects a SINGLE victim via cached
+    priority and preempts it using vLLM's native mechanism (abort + requeue
+    with PREEMPTED status). The request will be rescheduled and recomputed.
+
+    This is the core experimental variable: different strategies select
+    DIFFERENT victims. BidKV picks the most efficient candidate; baselines
+    use simpler heuristics.
+
+    Guards:
+    - KV utilization > 90%
+    - Waiting queue non-empty (demand for blocks)
+    - At least 3 running requests (keep 2+ running)
+    - 5-second cooldown between proactive events (prevent storm)
+    - preempt-evict: skip entirely (it IS the "no intervention" baseline)
+    """
+    import time
+
+    cooldown_s = 5.0
     now = time.monotonic()
     last_proactive = getattr(scheduler, "_bidkv_last_proactive", 0.0)
     if now - last_proactive < cooldown_s:
@@ -324,14 +458,12 @@ def _proactive_preempt(scheduler: Any, adapter: VLLMAdapter) -> None:
     if not waiting:
         return
 
-    # Must have >=3 running requests (keep at least 2 after preemption)
+    # Must have >= 3 running
     running = getattr(scheduler, "running", None)
     if running is None or len(running) < 3:
         return
 
-    # Check KV utilization — 92% threshold (near-cascade, conservative).
-    # Tail truncation frees partial blocks while keeping the request running,
-    # avoiding the abort-requeue storm that occurs at lower thresholds.
+    # Check KV utilization
     kv_mgr = getattr(scheduler, "kv_cache_manager", None)
     if kv_mgr is None:
         return
@@ -339,65 +471,60 @@ def _proactive_preempt(scheduler: Any, adapter: VLLMAdapter) -> None:
     if block_pool is None:
         return
     usage = block_pool.get_usage()
-    if usage < 0.92:
+    if usage < 0.90:
         return
 
-    # --- Compute needed tokens: target 85%, capped per event to prevent bloat ---
-    used, total = adapter.get_kv_stats()
-    target_usage = int(total * 0.85)
-    needed_tokens = max(1, used - target_usage)
-    # Cap: at most 256 tokens (16 blocks) per event to bound batch-size impact
-    max_truncate_per_event = 256
-    needed_tokens = min(needed_tokens, max_truncate_per_event)
-
-    # --- Strategy-aware victim selection ---
-    strategy = adapter._experiment_strategy
     strategy_name = adapter._experiment_strategy_name
 
-    # preempt-evict is the "no compression" baseline — only native preemption.
-    # Skip proactive truncation entirely so it measures vanilla framework behavior.
+    # preempt-evict: skip — measures vanilla framework behavior
     if strategy_name == "preempt-evict":
         return
 
-    victim_id: str | None = None
-    diag_detail = ""
-
-    if strategy is not None:
-        # Route ALL strategies (including BidKV) through select_victims()
-        # for clean ablation: each strategy is evaluated by its own logic.
-        pairs = _build_running_candidates(running, adapter)
-        candidates = [p[0] for p in pairs]
-        if candidates:
-            actions = strategy.select_victims(candidates, needed_tokens)
-            if actions:
-                victim_id = actions[0].request_id
-                diag_detail = f"strategy={strategy_name}"
-    else:
-        # No strategy set (standalone adapter): use completion-aware keep_score
-        best_victim = None
-        best_score = float("inf")
-        for req in running:
-            keep_score = _compute_keep_score(req)
-            if keep_score < best_score:
-                best_score = keep_score
-                best_victim = req
-
-        if best_victim is not None:
-            victim_id = getattr(best_victim, "request_id", None)
-            diag_detail = f"score={best_score:.2f}"
-
-    if victim_id is None:
+    # Find victim from cached priority (lowest priority = most expendable)
+    cached = getattr(adapter, "_cached_preempt_priority", None)
+    if not cached:
         return
 
-    # Tail truncation: remove tail KV blocks from victim while keeping it
-    # running. Caps per-event freed tokens to prevent batch-size bloat.
-    freed = adapter.execute_compression(victim_id, needed_tokens)
-    if freed > 0:
-        scheduler._bidkv_last_proactive = now
-        _diag(
-            f"proactive truncate: {victim_id} "
-            f"({diag_detail}, usage={usage:.2f}, freed={freed})"
-        )
+    # Find the running request with lowest cached priority
+    best_victim_req = None
+    best_victim_idx = -1
+    best_priority = float("inf")
+    for i, req in enumerate(running):
+        rid = getattr(req, "request_id", None)
+        if rid is None:
+            continue
+        p = cached.get(rid, float("inf"))
+        if p < best_priority:
+            best_priority = p
+            best_victim_req = req
+            best_victim_idx = i
+
+    if best_victim_req is None or best_victim_idx < 0:
+        return
+
+    victim_id = getattr(best_victim_req, "request_id", "")
+    freed_estimate = getattr(best_victim_req, "num_computed_tokens", 0)
+
+    # Execute native preemption via vLLM's _preempt_request
+    preempt_fn = getattr(scheduler, "_preempt_request", None)
+    if preempt_fn is None:
+        return
+
+    try:
+        # Pop from running first, then preempt
+        running.pop(best_victim_idx)
+        preempt_fn(best_victim_req, now)
+    except Exception:  # noqa: BLE001
+        # If preemption fails, put req back
+        running.append(best_victim_req)
+        return
+
+    scheduler._bidkv_last_proactive = now
+    adapter._metrics.record_compression(victim_id, freed_estimate)
+    _diag(
+        f"proactive PREEMPT: strategy={strategy_name} "
+        f"victim={victim_id} usage={usage:.2f} freed~{freed_estimate}"
+    )
 
 
 _MODEL_EXECUTOR_RESOLVED = False
@@ -429,24 +556,175 @@ def _resolve_model_executor(scheduler: Any, adapter: VLLMAdapter) -> None:  # no
             me = getattr(self_obj, "model_executor", None)
             if me is not None:
                 adapter._model_executor = me
-                _diag(
-                    f"resolved model_executor via stack walk "
-                    f"(frame={frame.f_code.co_name})"
-                )
+                _diag(f"resolved model_executor via stack walk (frame={frame.f_code.co_name})")
                 return
         frame = frame.f_back
     _diag("WARN: could not resolve model_executor via stack walk")
 
 
-def _patched_schedule(scheduler: Any, adapter: VLLMAdapter) -> Any:
-    """Patched schedule() — 智能 victim 选择 + 主动压缩。
+def _get_max_tokens_estimate(req: Any) -> int:
+    """Estimate max output tokens from request's sampling_params.
 
-    v2 approach:
-    1. Reorder scheduler.running (victim reorder) — when vLLM's native
-       preemption fires (FCFS: self.running.pop()), it picks the request
-       with the lowest BidKV quality score.
-    2. Proactively preempt the lowest-quality request when KV utilization
-       is high, freeing blocks BEFORE vLLM's native preemption cascades.
+    All strategies have equal access to max_tokens — it is a standard
+    API parameter, NOT a bid signal.  Differentiation between strategies
+    comes from quality-aware preemption decisions (select_victims / U),
+    not from information asymmetry in lifecycle cost estimation.
+    """
+    sp = getattr(req, "sampling_params", None)
+    if sp is not None:
+        mt = getattr(sp, "max_tokens", None)
+        if mt is not None and mt > 0:
+            return mt
+    return 256  # conservative fallback
+
+
+def _proactive_srpt(scheduler: Any, adapter: VLLMAdapter) -> None:
+    """Proactive SRPT: preempt high-remaining-cost running request for low-cost waiting.
+
+    SRPT (Shortest Remaining Processing Time) is provably optimal for
+    minimizing mean flow time. The key: accurately estimating "remaining time."
+
+    All SJF strategies use the same remaining-cost estimation from
+    sampling_params.max_tokens (standard API parameter, universally
+    accessible). The quality of OUTCOMES differs because prior
+    preemption decisions (via select_victims / U) shape which requests
+    remain running — BidKV's quality-aware eviction leaves a better
+    residual composition.
+
+    FCFS/EDF strategies (preempt-evict, slack-aware) are excluded because
+    SRPT conflicts with their non-SJF scheduling discipline.
+
+    Guard rails:
+    - KV utilization > 80% (real pressure)
+    - Waiting queue non-empty
+    - At least 3 running requests
+    - Running victim must have generated ≥ 10 output tokens
+    - Clear benefit: remaining(running) > 1.2 × total(waiting)
+    - 1.5-second cooldown between preemptions (prevent storm)
+    """
+    import time
+
+    strategy_name = adapter._experiment_strategy_name
+
+    # FCFS/EDF strategies excluded — SRPT conflicts with their discipline
+    if strategy_name in ("preempt-evict", "slack-aware"):
+        return
+
+    # Cooldown
+    now = time.monotonic()
+    last_srpt = getattr(scheduler, "_bidkv_last_srpt", 0.0)
+    if now - last_srpt < 1.5:
+        return
+
+    running = getattr(scheduler, "running", None)
+    waiting = getattr(scheduler, "waiting", None)
+    if not running or not waiting or len(running) < 3:
+        return
+
+    # KV pressure check
+    kv_mgr = getattr(scheduler, "kv_cache_manager", None)
+    if kv_mgr is None:
+        return
+    block_pool = getattr(kv_mgr, "block_pool", None)
+    if block_pool is None:
+        return
+    usage = block_pool.get_usage()
+    if usage < 0.80:
+        return
+
+    # Find best waiting candidate (smallest total cost)
+    best_waiting = None
+    best_waiting_cost = float("inf")
+    for req in waiting:
+        prompt = getattr(req, "num_prompt_tokens", 0)
+        max_out = _get_max_tokens_estimate(req)
+        total = prompt + max_out
+        if total < best_waiting_cost:
+            best_waiting_cost = total
+            best_waiting = req
+
+    if best_waiting is None:
+        return
+
+    # Find worst running candidate (highest remaining cost, with min output guard)
+    worst_running = None
+    worst_remaining = 0
+    worst_idx = -1
+    for i, req in enumerate(running):
+        prompt = getattr(req, "num_prompt_tokens", 0)
+        computed = getattr(req, "num_computed_tokens", 0)
+        output_so_far = max(0, computed - prompt)
+
+        # Must have generated at least 10 output tokens (avoid immediate re-preemption)
+        if output_so_far < 10:
+            continue
+
+        # Anti-starvation: skip requests already preempted 2+ times
+        if getattr(req, "num_preemptions", 0) >= 2:
+            continue
+
+        max_out = _get_max_tokens_estimate(req)
+        remaining = max(0, max_out - output_so_far)
+
+        if remaining > worst_remaining:
+            worst_remaining = remaining
+            worst_running = req
+            worst_idx = i
+
+    if worst_running is None:
+        return
+
+    # Benefit check: remaining(running) must be > 1.2× total(waiting)
+    if worst_remaining < best_waiting_cost * 1.2:
+        return
+
+    # Execute preemption via vLLM native mechanism
+    preempt_fn = getattr(scheduler, "_preempt_request", None)
+    if preempt_fn is None:
+        return
+
+    victim_id = getattr(worst_running, "request_id", "?")
+    try:
+        running.pop(worst_idx)
+        preempt_fn(worst_running, now)
+    except Exception:  # noqa: BLE001
+        running.append(worst_running)
+        return
+
+    # Remove from prev_step_scheduled_req_ids so that when orig() picks up
+    # this request from waiting as "resumed", the assertion at
+    # scheduler.py:1051 (assert not scheduled_in_prev_step) won't fire.
+    prev_ids = getattr(scheduler, "prev_step_scheduled_req_ids", None)
+    if prev_ids is not None:
+        prev_ids.discard(victim_id)
+
+    scheduler._bidkv_last_srpt = now
+    adapter._metrics.record_compression(victim_id, worst_remaining)
+    _diag(
+        f"SRPT preempt: strategy={strategy_name} victim={victim_id} "
+        f"remaining={worst_remaining} waiting_cost={best_waiting_cost} "
+        f"usage={usage:.2f}"
+    )
+
+
+def _patched_schedule(scheduler: Any, adapter: VLLMAdapter) -> Any:
+    """Patched schedule() — Mode A: SJF admission + strategy-specific preemption.
+
+    Flow:
+    1. Sync request tracking (running + waiting)
+    2. Track waiting arrival times
+    3. Reorder waiting queue by strategy-specific SJF key
+    4. Refresh preemption priority cache (select_victims)
+    5. Proactive SRPT preemption (bidkv + global-nobid only)
+    6. Reorder running list (strategy-specific victim ordering)
+    7. Call original schedule()
+
+    Strategy differentiation hierarchy:
+    - preempt-evict: FCFS admission + LIFO preemption (true vLLM default)
+    - slack-aware: EDF admission + SLO-slack preemption
+    - static-random/h2o/uniform/global-nobid/bidkv: SJF(prompt) admission
+      + strategy-specific select_victims() reorder + SRPT
+    - BidKV's edge: quality-aware U = r / (δ + ε) via H2O scoring
     """
     global _SCHEDULE_CALL_COUNT
     _SCHEDULE_CALL_COUNT += 1
@@ -473,11 +751,25 @@ def _patched_schedule(scheduler: Any, adapter: VLLMAdapter) -> Any:
     # 同步 request tracking
     _sync_request_tracking(scheduler, adapter)
 
-    # Proactively preempt lowest-quality request when KV pressure is high
-    _proactive_preempt(scheduler, adapter)
+    # Track arrival time for waiting requests (needed for EDF/anti-starvation)
+    _track_waiting_arrival(scheduler, adapter)
 
-    # Reorder running list: put most expendable request at the end
-    # (FCFS preemption uses self.running.pop() — last element)
+    # Reorder waiting queue: strategy-specific SJF key
+    _reorder_waiting_for_admission(scheduler, adapter)
+
+    # Refresh strategy-specific preemption priority cache (every 3s)
+    # Calls strategy.select_victims() to rank running requests
+    _refresh_priority_cache(scheduler, adapter)
+
+    # Proactive SRPT preemption (all SJF strategies)
+    # Preempt high-remaining-cost running request when a low-cost
+    # waiting request could be served instead. All strategies use
+    # the same cost estimation; BidKV differs in prior eviction quality.
+    _proactive_srpt(scheduler, adapter)
+
+    # Reorder running list: strategy-specific victim selection
+    # preempt-evict gets no reorder (vLLM default LIFO);
+    # others use cached priority from select_victims()
     _reorder_running_for_preemption(scheduler, adapter)
 
     # Let vLLM handle everything — including preemption with OUR ordering
@@ -509,15 +801,17 @@ def _patched_update_from_output(
     _update_token_tracking_from_output(scheduler, adapter, model_runner_output)
 
     # 更新 H2O scoring 累积注意力统计
+    # Only run for strategies that use H2O scoring (avoids wasting CPU
+    # on strategies that don't benefit from cumulative attention data).
     # Sampled at 20% (every 5th step) to reduce CPU overhead.
-    # Cumulative attention converges quickly; 20% sampling causes negligible
-    # scoring accuracy loss while reducing overhead ~5×.
-    h2o_counter = getattr(scheduler, "_bidkv_h2o_counter", 0) + 1
-    scheduler._bidkv_h2o_counter = h2o_counter
-    if h2o_counter % 5 == 0:
-        from bidkv.adapters.vllm.h2o_hook import update_h2o_from_output
+    _H2O_STRATEGIES = ("h2o-style", "global-nobid", "bidkv")
+    if adapter._experiment_strategy_name in _H2O_STRATEGIES:
+        h2o_counter = getattr(scheduler, "_bidkv_h2o_counter", 0) + 1
+        scheduler._bidkv_h2o_counter = h2o_counter
+        if h2o_counter % 5 == 0:
+            from bidkv.adapters.vllm.h2o_hook import update_h2o_from_output
 
-        update_h2o_from_output(adapter, scheduler, model_runner_output)
+            update_h2o_from_output(adapter, scheduler, model_runner_output)
 
     return result
 
@@ -532,6 +826,25 @@ def _patched_free_request(scheduler: Any, adapter: VLLMAdapter, request: Any, **
     # 调用原始方法（透传所有额外参数，如 delay_free_blocks）
     orig = getattr(scheduler, f"{_ORIG_PREFIX}_free_request")
     return orig(request, **kwargs)
+
+
+def _track_waiting_arrival(scheduler: Any, adapter: VLLMAdapter) -> None:
+    """Record arrival time for waiting requests.
+
+    Needed for EDF (slack-aware) and anti-starvation (bidkv).
+    Only records on first sight — does not overwrite.
+    """
+    import time
+
+    waiting = getattr(scheduler, "waiting", None)
+    if waiting is None:
+        return
+
+    now_ms = time.monotonic() * 1000
+    for request in waiting:
+        rid = getattr(request, "request_id", None)
+        if rid is not None and rid not in adapter._request_arrival_ms:
+            adapter._request_arrival_ms[rid] = now_ms
 
 
 def _sync_request_tracking(scheduler: Any, adapter: VLLMAdapter) -> None:

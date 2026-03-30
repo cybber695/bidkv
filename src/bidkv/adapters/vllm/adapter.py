@@ -438,9 +438,7 @@ class VLLMAdapter(FrameworkAdapter):
         )
         return result.actual_freed_tokens
 
-    def _sync_model_runner_block_table(
-        self, request_id: str, new_num_blocks: int
-    ) -> None:
+    def _sync_model_runner_block_table(self, request_id: str, new_num_blocks: int) -> None:
         """Sync the model runner's cached state after tail-block truncation.
 
         Uses ``add_row`` (full row overwrite) instead of just patching
@@ -526,9 +524,7 @@ class VLLMAdapter(FrameworkAdapter):
             # be told the new count.  Also zero out stale token IDs beyond
             # the new total to prevent the embedding layer from reading
             # garbage values.
-            sched_req = (
-                getattr(self._scheduler, "requests", {}).get(request_id)
-            )
+            sched_req = getattr(self._scheduler, "requests", {}).get(request_id)
             if sched_req is not None:
                 num_prompt = getattr(sched_req, "num_prompt_tokens", 0)
                 n_output = len(getattr(sched_req, "_output_token_ids", []))
@@ -562,10 +558,7 @@ class VLLMAdapter(FrameworkAdapter):
                             actual_block_size = self._get_block_size() or 16
                             new_computed = new_num_blocks * actual_block_size
                             mr_req.num_computed_tokens = new_computed
-                            _diag(
-                                f"sync: mr_req.num_computed_tokens "
-                                f"{nt} -> {new_computed}"
-                            )
+                            _diag(f"sync: mr_req.num_computed_tokens {nt} -> {new_computed}")
 
             _diag(
                 f"sync_block_table: add_row OK request={request_id} "

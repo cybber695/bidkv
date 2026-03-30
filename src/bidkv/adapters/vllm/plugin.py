@@ -30,10 +30,9 @@ def register() -> None:
         return
 
     strategy = os.environ.get("BIDKV_STRATEGY", "preempt-evict")
-    if strategy == "preempt-evict":
-        logger.debug("BidKV plugin: preempt-evict mode, no hooks needed")
-        return
-
+    # ALL strategies install hooks for fair comparison.
+    # preempt-evict hooks do FCFS (no reorder) — identical to vanilla vLLM
+    # scheduling, but with the same infrastructure overhead for fairness.
     logger.info("BidKV plugin: patching Scheduler for strategy=%s", strategy)
     _patch_scheduler_init(strategy)
     _PATCHED = True

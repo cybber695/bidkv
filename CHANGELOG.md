@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **Remove fake bid=max_tokens asymmetry — strategy differentiation via quality-aware U only**:
+  - `_get_max_tokens_estimate()`: removed `strategy_name` parameter; all strategies now equally
+    access `sampling_params.max_tokens` (standard API param, NOT a bid signal)
+  - BidKV admission: changed from `SJF(prompt + max_output)` to `SJF(prompt)` same as other
+    SJF strategies; admission is no longer a differentiation axis
+  - SRPT: all SJF strategies (static-random, h2o, uniform, global-nobid, bidkv) now use
+    identical remaining-cost estimation; previously global-nobid got hardcoded 180, others 256
+  - BidKV's sole differentiator: quality-aware preemption via `select_victims()` using
+    `U = r / (δ + ε)` from scoring→bid→pool→solver pipeline
+  - plugin.py: all strategies (including preempt-evict) now install hooks for fair overhead comparison
+  - 465 tests passing, ruff clean
+
 ### Fixed
 
 - **Experiment fairness: 5-layer architecture reform for clean ablation**:
