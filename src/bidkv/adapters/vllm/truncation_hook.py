@@ -1,5 +1,11 @@
 """Truncation Hook — vLLM KV cache tail truncation via monkeypatch.
 
+.. deprecated::
+    **DEPRECATED (Mode B)** — 本模块为 Mode B（token-level KV truncation）的
+    基础设施代码。当前 vLLM 实验仅运行 Mode A（request-level preempt+recompute），
+    scheduler_hook.py 中不会调用任何 truncation 方法。本模块保留用于潜在的
+    Mode B 未来扩展（issue #054），但在当前实验中为完全死代码。
+
 Implements tail truncation by dynamically adding
 ``truncate_request_tail()`` to vLLM's ``KVCacheManager`` and the
 underlying ``SingleTypeKVCacheManager`` / ``KVCacheCoordinator``.

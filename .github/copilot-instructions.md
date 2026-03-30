@@ -14,9 +14,15 @@
 
 ## 项目定位
 
-BidKV 是一个 **framework-portable** 的 KV cache compression scheduling 原语。
-核心思路：用户通过 bid 信号显式传递 quality preference，驱动 BidKV solver 进行
-quality-aware 的 KV eviction/compression 决策。
+BidKV 是一个 **framework-portable** 的 KV cache 请求调度原语。
+
+核心问题：当 KV cache 压力超过阈值时，**谁应该被驱逐**？
+vLLM 默认使用 LIFO/FCFS 和搜索回填 — BidKV 通过质量感知的驱逐排序
+替代这一策略，使得 preemption 决策基于 **U = tokens_freed / (δ + ε)**
+（每单位质量损失能回收多少 KV 空间）。
+
+BidKV **不做压缩**——它只控制“谁被 preempt”，底层执行仍是
+框架原生的 preempt + recompute（vLLM）或 token-level release（SGLang）。
 
 BidKV 是**独立 Python 包**，零 sagellm 依赖，可作为 vLLM / SGLang 的纯插件使用。
 
@@ -86,9 +92,12 @@ src/bidkv/
 禁止在 registry 中硬编码策略类。新策略必须实现 `BaselineStrategy` ABC。
 
 ### 2. FrameworkAdapter ABC — 跨框架适配
-5 层职责：KV stats → Pressure interception → Compression execution →
-Scoring callback → Lifecycle management。
+职责：KV stats 获取 → 策略注入（谁被 preempt）→ Lifecycle 管理。
+在 vLLM Mode A 中，adapter 仅做请求排序，不执行 token-level 操作。
 每个被支持的 serving framework 实现一个 adapter。
+
+注：adapter.py 中的 execute_compression() / try_compress() 等方法已标记为
+**DEPRECATED (Mode B)** — 在 Mode A 实验中为死代码。
 
 ### 3. 默认 OFF + Kill Switch
 `BidKVConfig(enabled=False)` 永远是默认。
@@ -119,16 +128,24 @@ vLLM / SGLang 仅在 adapter 内通过 runtime import 引用。
 | ------------ | -------------------------------------- | ------------------------------------ |
 | 策略数       | 7（完整归因链）                        | 3（精简方向验证）                     |
 | 矩阵         | 7 × 2 × 3 × 3 = 126 runs             | 3 × 2 × 3 × 3 = 54 runs            |
-| 执行语义     | Mode A (request-level preempt/recompute) | native token-level / request-level fallback |
+| 执行语义     | Mode A: 请求级调度 + vLLM 原生 preempt/recompute | token-level (RadixAttention) / request-level fallback |
 | 产出物       | Table 1 + Fig 3/4/5/6                 | Table 2 + Fig 7                     |
 | claim 角色   | Scenario A 核心主张                    | directional consistency + portability |
 
-### vLLM 当前执行模式（Mode A — 请求级调度）
+### vLLM 当前架构：质量感知的请求调度
 
-**当前 vLLM 实验仅运行 Mode A**。所有 7 个策略的执行语义完全相同：
-vLLM 原生 preempt + recompute（整请求驱逐+重新计算）。
+BidKV 在 vLLM 上的定位是**请求调度插件**，不是压缩引擎。
 
-策略分化发生在三个层面（不涉及 token 级 KV 压缩）：
+它解决的核心问题：当 KV cache 空间不足时，**应该 preempt 哪个请求？**
+
+vLLM 原生的答案是 LIFO（最后进入 running 的先被驱逐）。
+BidKV 的答案是：驱逐那个“每单位质量损失能释放最多 KV 空间”的请求（U 最高的）。
+
+**执行机制完全是 vLLM 原生的**：被选中的请求通过 `scheduler._preempt_request()`
+驱逐，其 KV blocks 全部释放，重新调度时 recompute from scratch。
+BidKV 不修改这个执行路径，只控制“谁被选中”。
+
+所有 7 个策略的调度分化：
 
 | 层面               | preempt-evict | slack-aware | random/h2o/uniform/nobid | bidkv                          |
 | ------------------ | ------------- | ----------- | ------------------------ | ------------------------------ |
@@ -139,10 +156,14 @@ vLLM 原生 preempt + recompute（整请求驱逐+重新计算）。
 | Proactive preempt  | ❌            | ✅          | ✅                       | ✅                             |
 
 BidKV 的唯一分化点：`select_victims()` 中使用完整 scoring→bid→pool→solver
-管线计算 **U = tokens_freed / (quality_delta + ε)**，实现质量感知的驱逐排序。
+管线计算 **U = tokens_freed / (quality_delta + ε)**，实现质量感知的 preemption 排序。
 
-**⚠️ adapter.py 中存在 Mode B 代码（`execute_compression()` → `_execute_tail_truncation()`）
-但在 vLLM scheduler_hook.py 中从未被调用，是预留的死代码。**
+### Mode B 状态（已废弃）
+
+adapter.py 中存在 Mode B 代码（`execute_compression()` → `_execute_tail_truncation()`），
+`truncation_hook.py` 提供 token-level KV block 截断基础设施。
+这些代码已全部标记为 **DEPRECATED (Mode B)**，在当前实验中为死代码，
+保留用于潜在的 Mode B 未来扩展（issue #054）。
 
 ### SGLang 3 策略
 
@@ -151,6 +172,22 @@ Preempt-Evict (Default) → Slack-Aware → BidKV
 方向一致性（Directional Consistency）：
 - DC-1a: BidKV ≥ Preempt-Evict
 - DC-1b: BidKV ≥ Slack-Aware
+
+**SGLang 执行语义设计问题**：
+
+SGLang 原生驱逐机制是 `RadixCache.evict()`，本质上做的是 **请求级 LRU 驱逐**
+（驱逐整个 radix tree 节点），而不是在一个 running 请求中间释放部分 token。
+
+当前 SGLang adapter 代码（`execute_compression()` → `radix_hook.free_kv_positions()`）
+实现的是 **token-level 部分释放**——这比 SGLang 原生行为更激进，
+且与 vLLM Mode A 的 request-level 调度语义不一致。
+
+双平台一致性目标：SGLang 也应走 request-level 调度（控制 WHO gets evicted），
+然后让 SGLang 原生 `RadixCache.evict()` 执行驱逐。这与 vLLM 完全对称。
+
+当前状态：smoke test (#052) 中 KV 压力从未触发，token-level 路径从未实际执行。
+SGLang adapter 的 token-level 代码有待重构为 request-level 语义，
+或在全量实验中确认后再决定。
 
 ### Phase 路线（vLLM）
 
@@ -179,9 +216,9 @@ P4 最小闭环优先 | P5 失败计入结果 | P6 单一变量控制
 ## Wave 1 关键代码变更（#049 + #051，已合入）
 
 ### #049 vLLM Mode A Recompute Fallback
-- `adapters/vllm/adapter.py`：`execute_compression()` 路由到 `_execute_tail_truncation()`；`execute_abort()` 调用 `scheduler.abort_requests()`
-- **注意**：`execute_compression()` 在 vLLM scheduler_hook 中从未被调用（Mode B 预留代码）
-- `scheduler_hook.py` 实际只做请求排序 + `_preempt_request()`（Mode A 语义）
+- `adapters/vllm/adapter.py`：`execute_compression()` 路由到 `_execute_tail_truncation()`（**已标记为 DEPRECATED Mode B**）
+- `scheduler_hook.py` 仅做请求排序 + `_preempt_request()`（调度语义）
+- `execute_abort()` 调用 `scheduler.abort_requests()`（**也已 DEPRECATED**）
 - **已完全移除** `_free_tail_blocks()` — 不再绕过 KVCacheCoordinator
 
 ### #051 SGLang 策略列表更新 + Audit

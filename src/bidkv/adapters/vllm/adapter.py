@@ -254,6 +254,12 @@ class VLLMAdapter(FrameworkAdapter):
     def execute_compression(self, request_id: str, target_tokens: int) -> int:
         """在 vLLM 中执行 KV 压缩。
 
+        .. deprecated::
+            **DEPRECATED (Mode B)** — 本方法为 Mode B（token-level truncation）入口，
+            在当前 Mode A（request-level preempt+recompute）实验中从未被调用。
+            scheduler_hook.py 仅通过请求排序和 _preempt_request() 实现调度，
+            不调用此方法。保留用于 Mode B 未来扩展（issue #054）。
+
         截断 output tokens 后通过 native preempt 释放 KV，
         recompute 时序列更短，降低 prefill 成本。
 
@@ -269,6 +275,14 @@ class VLLMAdapter(FrameworkAdapter):
         int
             实际释放的 token 数量。
         """
+        import warnings
+
+        warnings.warn(
+            "execute_compression() is Mode B dead code in current Mode A experiments. "
+            "See issue #054 for Mode B roadmap.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if not self._config.is_active:
             return 0
 
@@ -276,6 +290,11 @@ class VLLMAdapter(FrameworkAdapter):
 
     def execute_abort(self, request_id: str) -> int:
         """Abort a running request via vLLM scheduler.abort_requests().
+
+        .. deprecated::
+            **DEPRECATED (Mode B)** — 本方法在 Mode A 实验中未被 scheduler_hook 调用。
+            Mode A 使用 vLLM 原生 _preempt_request()，不通过 adapter 路径。
+            保留用于 Mode B 未来扩展。
 
         The request is removed from running and requeued to waiting.
         All its KV blocks are freed immediately. The request will be
@@ -310,6 +329,11 @@ class VLLMAdapter(FrameworkAdapter):
 
     def _execute_tail_truncation(self, request_id: str, target_tokens: int) -> int:
         """Token-level KV block truncation.
+
+        .. deprecated::
+            **DEPRECATED (Mode B)** — 本方法为 Mode B 核心实现，在 Mode A 中为死代码。
+            仅通过 execute_compression()（也已废弃）间接调用。
+            保留用于 Mode B 未来扩展（issue #054）。
 
         Removes tail KV blocks from a running request without full preemption.
         The request continues decoding with a reduced KV footprint.
@@ -440,6 +464,9 @@ class VLLMAdapter(FrameworkAdapter):
 
     def _sync_model_runner_block_table(self, request_id: str, new_num_blocks: int) -> None:
         """Sync the model runner's cached state after tail-block truncation.
+
+        .. deprecated::
+            **DEPRECATED (Mode B)** — 仅被 _execute_tail_truncation()（已废弃）调用。
 
         Uses ``add_row`` (full row overwrite) instead of just patching
         ``num_blocks_per_row`` to guarantee no stale block-IDs remain in
@@ -587,6 +614,12 @@ class VLLMAdapter(FrameworkAdapter):
     def try_compress(self) -> int:
         """执行一轮 BidKV 压缩周期（压力驱动）。
 
+        .. deprecated::
+            **DEPRECATED (Mode B)** — 本方法在 vLLM Mode A 中未被 scheduler_hook 调用。
+            Mode A 通过请求排序 + vLLM 原生 preempt 实现调度，不走 adapter 压缩路径。
+            SGLang adapter 中的同名方法仍为活跃代码。
+            保留用于 Mode B 未来扩展（issue #054）。
+
         在 vLLM scheduler 的 preemption 路径之前调用。
         流程：
         1. 更新 KV stats → PressureDetector
@@ -696,6 +729,9 @@ class VLLMAdapter(FrameworkAdapter):
 
     def try_compress_for_request(self, needed_blocks: int) -> int:
         """尝试压缩以为特定请求腾出 block 空间。
+
+        .. deprecated::
+            **DEPRECATED (Mode B)** — 本方法在 vLLM Mode A 中未被调用。保留用于 Mode B。
 
         在 allocate_slots 返回 None 时，preempt 之前调用。
 

@@ -6,6 +6,37 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **SGLang adapter: token-level → request-level Mode A scheduling**:
+  - `scheduler_hook.py`: Complete rewrite — replaced token-level `try_compress()` hook with
+    request-level Mode A scheduling (symmetric with vLLM Mode A):
+    - 8-step flow in `_patched_get_next_batch_to_run()`: sync tracking → track arrivals →
+      reorder waiting → reorder running → refresh priority cache → proactive preempt →
+      proactive SRPT → call original
+    - Waiting reorder: FCFS (preempt-evict), EDF (slack-aware), SJF (bidkv)
+    - Running reorder: LIFO passthrough (preempt-evict), cached priority (slack-aware, bidkv)
+    - Priority cache refresh via `strategy.select_victims()` (3s interval)
+    - Proactive preempt at KV > 90%, proactive SRPT at KV > 80% (bidkv only)
+    - Uses `functools.partial` monkey-patching (same pattern as vLLM adapter)
+  - `adapter.py`: Added Mode A attributes (`_cached_preempt_priority`,
+    `_last_priority_refresh`, `_request_arrival_ms`); marked `execute_compression()` and
+    `try_compress()` as DEPRECATED (Mode B) with `warnings.warn(DeprecationWarning)`
+  - `radix_hook.py`: Entire module marked as `[DEPRECATED — Mode B]`; token-level
+    `free_kv_positions()` preserved for potential Mode B extension (issue #054)
+  - `__init__.py`: Updated module docstring to reflect Mode A architecture
+  - `serve_entry.py`: All strategies (including sglang_default) now install scheduler hooks
+    for fair overhead comparison — removed `if strategy != "sglang_default":` guard
+
+- **Narrative pivot: scheduling-centric framing (Mode B deprecated)**:
+  - Updated copilot-instructions.md and bidkv-agent.md: BidKV is a "request preemption
+    scheduling primitive", not a "compression scheduling primitive"
+  - Core message: BidKV controls WHO gets preempted, execution is vLLM native preempt+recompute
+  - All Mode B code marked with `DEPRECATED (Mode B)` docstring warnings:
+    - `adapter.py`: `execute_compression()`, `_execute_tail_truncation()`, `execute_abort()`,
+      `try_compress()`, `try_compress_for_request()`, `_sync_model_runner_block_table()`
+    - `truncation_hook.py`: entire module marked as deprecated infrastructure
+    - `scheduler_hook.py`: truncation install block marked as deprecated
+  - Mode B code retained for potential future extension (issue #054)
+
 - **Remove fake bid=max_tokens asymmetry — strategy differentiation via quality-aware U only**:
   - `_get_max_tokens_estimate()`: removed `strategy_name` parameter; all strategies now equally
     access `sampling_params.max_tokens` (standard API param, NOT a bid signal)

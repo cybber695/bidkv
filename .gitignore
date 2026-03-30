@@ -55,6 +55,9 @@ results/traces_seed99_backup/
 results/formal/traces_seed99_backup/
 results/vllm_24run_full/
 
+# Agent prompts (generated, not committed)
+docs/prompts/
+
 # Paper build outputs
 paper/*.pdf
 paper/*.out
