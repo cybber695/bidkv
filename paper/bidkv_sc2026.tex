@@ -44,13 +44,13 @@
 % Shorthand
 \newcommand{\bidkv}{BidKV\xspace}
 \newcommand{\sys}{\bidkv}
-\newcommand{\utilfn}{U}
-\newcommand{\tokfree}{r}
-\newcommand{\qualdelta}{\delta}
-\newcommand{\stabeps}{\varepsilon}
-\newcommand{\dbudget}{\Delta_{\max}}
-\newcommand{\neededtok}{N}
-\newcommand{\numbids}{B}
+\newcommand{\utilfn}{\ensuremath{U}}
+\newcommand{\tokfree}{\ensuremath{r}}
+\newcommand{\qualdelta}{\ensuremath{\delta}}
+\newcommand{\stabeps}{\ensuremath{\varepsilon}}
+\newcommand{\dbudget}{\ensuremath{\Delta_{\max}}}
+\newcommand{\neededtok}{\ensuremath{N}}
+\newcommand{\numbids}{\ensuremath{B}}
 
 % Citation shortcuts
 \newcommand{\eg}{\emph{e.g.},\xspace}
@@ -77,42 +77,44 @@
 % Abstract
 % ============================================================
 \begin{abstract}
-Online large language model (LLM) serving faces dynamic KV cache pressure
-caused by heterogeneous request lengths, bursty arrivals, and growing context
-windows.  When memory pressure exceeds capacity, the serving engine must
-\emph{preempt} one or more running requests to reclaim KV
-cache---yet existing policies select victims with little
-awareness of cross-request heterogeneity.  vLLM defaults to
-LIFO ordering; token-level heuristics such as H2O apply a
-fixed scoring rule to every request, without coordinating
-preemption decisions across the batch.
+% Online large language model (LLM) serving faces dynamic KV cache pressure
+% caused by heterogeneous request lengths, bursty arrivals, and growing context
+% windows.  When memory pressure exceeds capacity, the serving engine must
+% \emph{preempt} one or more running requests to reclaim KV
+% cache---yet existing policies select victims with little
+% awareness of cross-request heterogeneity.  vLLM defaults to
+% LIFO ordering; token-level heuristics such as H2O apply a
+% fixed scoring rule to every request, without coordinating
+% preemption decisions across the batch.
+%
+% We present \bidkv, a bid-driven preemption scheduling primitive
+% that introduces \emph{explicit preemption-sensitivity signals}
+% (bids) as a first-class scheduling input.  Each active request
+% generates bids encoding the tokens freed upon
+% preemption~($\tokfree$) and a surrogate scheduling
+% cost~($\qualdelta$) derived from token-importance scores.
+% A constrained greedy solver ranks bids by the utility ratio
+% $\utilfn = \tokfree / (\qualdelta + \stabeps)$ and selects
+% victims that reclaim the most KV capacity per unit of
+% estimated scheduling disruption.  Under the recompute-fallback
+% execution model used in this work, preempted requests are
+% fully recomputed by the framework's native mechanism, so final
+% output quality is identical across all strategies; the
+% differentiation lies in scheduling efficiency---which requests
+% are preempted, how often, and at what recomputation cost.
+%
+% \bidkv is framework-portable: a four-layer adapter abstraction
+% enables integration with vLLM and SGLang without modifying
+% their source code.  We evaluate \bidkv with
+% Llama-3.1-8B-Instruct on an NVIDIA RTX A6000 using ShareGPT
+% traces under Poisson arrival.  Across seven strategies forming
+% a complete attribution chain, \bidkv achieves
+% \bidkvSLOAttainment SLO attainment at medium load
+% (\bidkvSLOGainOverHtwoO above H2O-Style) and reduces P95~TTFT
+% by \bidkvTTFTReductionOverHtwoO at high load, while
+% maintaining equivalent throughput.
 
-We present \bidkv, a bid-driven preemption scheduling primitive
-that introduces \emph{explicit preemption-sensitivity signals}
-(bids) as a first-class scheduling input.  Each active request
-generates bids encoding the tokens freed upon
-preemption~($\tokfree$) and a surrogate scheduling
-cost~($\qualdelta$) derived from token-importance scores.
-A constrained greedy solver ranks bids by the utility ratio
-$\utilfn = \tokfree / (\qualdelta + \stabeps)$ and selects
-victims that reclaim the most KV capacity per unit of
-estimated scheduling disruption.  Under the recompute-fallback
-execution model used in this work, preempted requests are
-fully recomputed by the framework's native mechanism, so final
-output quality is identical across all strategies; the
-differentiation lies in scheduling efficiency---which requests
-are preempted, how often, and at what recomputation cost.
-
-\bidkv is framework-portable: a four-layer adapter abstraction
-enables integration with vLLM and SGLang without modifying
-their source code.  We evaluate \bidkv with
-Llama-3.1-8B-Instruct on an NVIDIA RTX A6000 using ShareGPT
-traces under Poisson arrival.  Across seven strategies forming
-a complete attribution chain, \bidkv achieves
-\bidkvSLOAttainment SLO attainment at medium load
-(\bidkvSLOGainOverHtwoO above H2O-Style) and reduces P95~TTFT
-by \bidkvTTFTReductionOverHtwoO at high load, while
-maintaining equivalent throughput.
+Online large language model (LLM) serving faces dynamic KV-cache pressure from heterogeneous request lengths, bursty arrivals, and growing context windows. When memory demand exceeds capacity, the serving engine must reclaim KV cache from active requests, yet existing policies typically rely on coarse request-order heuristics or local token-scoring rules with limited awareness of cross-request heterogeneity. We present \bidkv, a utility-guided KV reclamation policy that lifts token-importance signals into a global, request-level utility formulation for victim selection. For each candidate victim action, the system estimates the KV capacity that would be recovered (\tokfree) and an estimated disruption cost (\qualdelta), where \qualdelta is instantiated in the current prototype from token-importance proxies rather than application-provided bids or quality labels. A constrained greedy solver ranks candidates by the utility ratio \utilfn = \tokfree / (\qualdelta + \stabeps) and selects requests that recover the most KV capacity per unit estimated penalty. Although \bidkv is designed to accommodate explicit application-level preference signals, the prototype evaluated here operates without application-level annotations. \bidkv is framework-portable: a four-layer adapter abstraction enables non-invasive integration with vLLM and SGLang while reusing their native recovery paths, yielding a controlled comparison in which strategies differ primarily in victim-selection policy. Evaluated with Llama-3.1-8B-Instruct on an NVIDIA RTX A6000 using ShareGPT traces under Poisson arrivals, \bidkv achieves \bidkvSLOAttainment SLO attainment at medium load (\bidkvSLOGainOverHtwoO above H2O-Style) and reduces P95 TTFT by \bidkvTTFTReductionOverHtwoO at high load while maintaining equivalent throughput.
 \end{abstract}
 
 \maketitle
