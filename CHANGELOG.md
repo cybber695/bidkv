@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Added new custom agent [bidkv-empirical-motivation](.github/agents/bidkv-empirical-motivation-agent.md) for paper Section 2 "Empirical Motivation" bridging experiments:
+  - Locks pre-experiment setup to rate=3.8 and KV proactive threshold >88%.
+  - Encodes three mandatory studies: victim heterogeneity, shared-snapshot counterfactual victim preference, and KV pressure frequency/duration.
+  - Enforces interpretation constraints for Mode A recompute fallback (delta as scheduling proxy, not output-quality loss).
+  - Requires paired snapshot-level statistics and warns against online-trajectory confounding.
+
 - **Optimization strategy pivot: Mixed TTFT focus + Long-Context gate**:
   - Primary target: Mixed workload TTFT advantage (bidkv(v5b) p99=3331ms vs pe-sjf 6476ms)
   - Long-Context: v5 three-gate mechanism for parity with pe-sjf (not superiority)
