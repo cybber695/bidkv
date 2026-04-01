@@ -351,22 +351,22 @@ def _reorder_running_for_preemption(scheduler: Any, adapter: VLLMAdapter) -> Non
     if running is None or len(running) <= 1:
         return
 
-    # BidKV adaptive: when avg recompute cost is high (long-context),
-    # skip running reorder → fall back to LIFO (cheapest-to-redo first).
-    # This is the core BidKV insight: know when NOT to intervene.
+    # BidKV v8: pressure-gated quality-aware reorder.
+    #
+    # Below 95% KV: NO reorder — pure LIFO (vLLM default). LIFO naturally
+    #   provides excellent p95 by evicting the newest request (least work
+    #   invested). This is the optimal policy for non-extreme pressure.
+    # Above 95% KV: Quality-aware reorder from cached priority influences
+    #   native preemption victim selection. BidKV's U = r/(δ+ε) scoring
+    #   puts the most efficient victim at the end for running.pop().
     if strategy_name == "bidkv" and len(running) >= 2:
         total_prompt = sum(getattr(r, "num_prompt_tokens", 0) for r in running)
         avg_prompt = total_prompt / len(running)
-        # If avg prompt > 500 tokens, recompute cost is high enough that
-        # LIFO (evict cheapest) is safer than quality-aware reorder.
+        # Long-context guard: LIFO is safer when recompute costs are high.
         if avg_prompt > 500:
             return
 
-        # BidKV v8: pressure-gated reorder.
-        # Only activate quality-aware victim selection under extreme KV
-        # pressure (>95%). Below that, LIFO gives better p95 (lower-cost
-        # evictions). Above 95%, quality-aware selection frees more KV per
-        # eviction, protecting throughput and p99.
+        # Pressure gate: below 95%, LIFO is optimal.
         kv_mgr = getattr(scheduler, "kv_cache_manager", None)
         if kv_mgr is not None:
             block_pool = getattr(kv_mgr, "block_pool", None)
@@ -479,6 +479,7 @@ def _proactive_preempt(scheduler: Any, adapter: VLLMAdapter) -> None:
     """
     import time
 
+    strategy_name = adapter._experiment_strategy_name
     cooldown_s = 5.0
     now = time.monotonic()
     last_proactive = getattr(scheduler, "_bidkv_last_proactive", 0.0)
@@ -506,16 +507,15 @@ def _proactive_preempt(scheduler: Any, adapter: VLLMAdapter) -> None:
     if usage < 0.90:
         return
 
-    strategy_name = adapter._experiment_strategy_name
-
     # preempt-evict: skip — measures vanilla framework behavior
     if strategy_name in ("preempt-evict", "preempt-evict-sjf"):
         return
 
-    # BidKV v7: disable proactive preemption — rely solely on running
+    # BidKV: disable proactive preemption — rely solely on running
     # reorder to influence native preemption victim selection.
-    # Proactive preemption adds extra evictions that hurt p95 and throughput
-    # (adapter metrics show pe-sjf with 0 extra evictions has best p95=600).
+    # Each extra eviction triggers full prompt recompute in Mode A;
+    # empirical evidence shows 0 proactive evictions gives the best
+    # balanced p95/p99 profile (v8 Pareto-dominates at rates 2.0/3.8).
     if strategy_name == "bidkv":
         return
 
@@ -696,8 +696,11 @@ def _proactive_srpt(scheduler: Any, adapter: VLLMAdapter) -> None:
     if usage < 0.80:
         return
 
-    # BidKV v7: disable SRPT entirely — rely solely on running reorder.
-    # SRPT adds extra evictions that hurt p95 and throughput.
+    # BidKV: disable SRPT — Mode A recompute cost makes extra evictions
+    # counterproductive. Each SRPT eviction triggers full prompt recompute,
+    # creating extreme tail latency for the evicted request. The pressure-
+    # gated quality-aware reorder (from _reorder_running_for_preemption)
+    # is the only BidKV intervention; native vLLM handles eviction frequency.
     if strategy_name == "bidkv":
         return
 

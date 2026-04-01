@@ -6,6 +6,19 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **scheduler_hook: finalize v8 scheduling with improved comments**:
+  - Removed v11c proactive cheapest-victim block (reverted to generic cached-priority
+    path with cost-benefit gate). Empirical evidence: proactive evictions add recompute
+    overhead that hurts p99 (v11c p99=4964 vs v8 p99=4807 at rate=5.7, pooled 3k).
+  - Disabled SRPT for BidKV with explanatory comment: each SRPT eviction triggers full
+    prompt recompute, creating extreme tail latency (v8b p99=6192 at rate=5.7).
+  - Updated reorder comments to reflect v8 pressure-gated design rationale.
+  - **No functional change from v8** — code paths identical, only comments improved.
+  - Tested variants that all performed worse than v8:
+    - v11c (proactive cheapest-victim): +3% p99 regression  
+    - v13 (LIFO starvation guard): +32% p95 regression
+    - v8b (SRPT enabled): +124% p99 regression
+
 - Added new custom agent [bidkv-empirical-motivation](.github/agents/bidkv-empirical-motivation-agent.md) for paper Section 2 "Empirical Motivation" bridging experiments:
   - Locks pre-experiment setup to rate=3.8 and KV proactive threshold >88%.
   - Encodes three mandatory studies: victim heterogeneity, shared-snapshot counterfactual victim preference, and KV pressure frequency/duration.
