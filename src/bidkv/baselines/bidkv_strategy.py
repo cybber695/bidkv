@@ -8,14 +8,14 @@ scorer-agnostic：支持任意实现 ScoringStrategy 的评分器，
 
 Mode A 语义（request-level preemption）
 --------------------------------------
-δ = 1 + 2·completion + starvation_penalty
+δ = 1 + 0.5·completion + starvation_penalty
 - freed 数量为主信号（效率优先：大请求释放更多 KV）
-- completion 为次信号（质量保护：接近完成的请求受保护）
+- completion 为轻量次信号（max ratio 1.5×，freed 强主导）
 - anti-starvation：被反复 preempt 的请求分母递增
 
-max ratio = 3×（completion 0% 与 100% 之间），确保 freed 主导排序、
-completion 仅在相近大小的请求间提供差异化。对 long-context 工作负载
-（recompute 代价高）效果显著：+3pp SLO vs freed-only baseline。
+max ratio = 1.5×（completion 0% 与 100% 之间），确保 freed 强主导排序。
+低 completion weight 使 victim ordering 接近最优的 freed-first，同时保留
+anti-starvation 以防止 cascading preemption（区别于 h2o-style）。
 """
 
 from __future__ import annotations
@@ -32,8 +32,8 @@ from bidkv.solver import GreedyBidSolver, SolverConfig
 class BidKVStrategy(BaselineStrategy):
     """BidKV 完整策略：scoring → bid → pool → solver。
 
-    Mode A 使用 U = freed / (1 + 2·completion + starvation + ε) 排序，
-    freed 主导、completion 提供 ≤3× 次级保护。
+    Mode A 使用 U = freed / (1 + 0.5·completion + starvation + ε) 排序，
+    freed 强主导、completion 提供 ≤1.5× 轻量保护。
 
     Parameters
     ----------
@@ -125,16 +125,16 @@ class BidKVStrategy(BaselineStrategy):
             if req.max_output_tokens > 0:
                 completion = min(1.0, output_generated / req.max_output_tokens)
 
-            # quality_delta = 1 + 2*completion + starvation
+            # quality_delta = 1 + 0.5*completion + starvation
             # ─────────────────────────────────────────────────
             # Denominator always ≥ 1, so U ≤ freed.
-            # Max protection ratio (completion 0→1) is 3×.
-            # freed remains the dominant signal; completion acts
-            # as a secondary tiebreaker among similar-sized requests.
-            # For long-context workloads where recompute is expensive,
-            # the 3× protection for near-completion requests provides
-            # measurable SLO improvement (+3pp vs freed-only baselines).
-            quality_delta = 1.0 + 2.0 * completion
+            # Max protection ratio (completion 0→1) is 1.5×.
+            # freed strongly dominates ordering — victim selection
+            # closely tracks freed-first (like h2o-style) for
+            # differently-sized requests, with completion providing
+            # only a mild tiebreaker. Anti-starvation (+0.3 per
+            # prior preemption) is the primary differentiator.
+            quality_delta = 1.0 + 0.5 * completion
 
             # Anti-starvation: previously preempted requests get
             # additional denominator weight to reduce their utility.

@@ -362,6 +362,19 @@ def _reorder_running_for_preemption(scheduler: Any, adapter: VLLMAdapter) -> Non
         if avg_prompt > 500:
             return
 
+        # BidKV v8: pressure-gated reorder.
+        # Only activate quality-aware victim selection under extreme KV
+        # pressure (>95%). Below that, LIFO gives better p95 (lower-cost
+        # evictions). Above 95%, quality-aware selection frees more KV per
+        # eviction, protecting throughput and p99.
+        kv_mgr = getattr(scheduler, "kv_cache_manager", None)
+        if kv_mgr is not None:
+            block_pool = getattr(kv_mgr, "block_pool", None)
+            if block_pool is not None:
+                usage = block_pool.get_usage()
+                if usage < 0.95:
+                    return
+
     # Use strategy-specific cached priority from select_victims()
     cached = getattr(adapter, "_cached_preempt_priority", None)
     if cached:
@@ -497,6 +510,13 @@ def _proactive_preempt(scheduler: Any, adapter: VLLMAdapter) -> None:
 
     # preempt-evict: skip — measures vanilla framework behavior
     if strategy_name in ("preempt-evict", "preempt-evict-sjf"):
+        return
+
+    # BidKV v7: disable proactive preemption — rely solely on running
+    # reorder to influence native preemption victim selection.
+    # Proactive preemption adds extra evictions that hurt p95 and throughput
+    # (adapter metrics show pe-sjf with 0 extra evictions has best p95=600).
+    if strategy_name == "bidkv":
         return
 
     # Find victim from cached priority (lowest priority = most expendable)
@@ -674,6 +694,11 @@ def _proactive_srpt(scheduler: Any, adapter: VLLMAdapter) -> None:
         return
     usage = block_pool.get_usage()
     if usage < 0.80:
+        return
+
+    # BidKV v7: disable SRPT entirely — rely solely on running reorder.
+    # SRPT adds extra evictions that hurt p95 and throughput.
+    if strategy_name == "bidkv":
         return
 
     # Find best waiting candidate (smallest total cost)
