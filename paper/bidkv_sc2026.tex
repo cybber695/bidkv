@@ -64,8 +64,7 @@
 % ------------------------------------------------------------
 % Title & Authors
 % ------------------------------------------------------------
-\title{BidKV: Quality-Aware Preemption Scheduling \\
-       for KV-Pressure LLM Serving}
+\title{BidKV: Utility-Guided Preemption Scheduling for KV-Pressure LLM Serving}
 
 \author{Anonymous Authors}
 \affiliation{%
@@ -114,30 +113,29 @@
 % by \bidkvTTFTReductionOverHtwoO at high load, while
 % maintaining equivalent throughput.
 
-Online large language model (LLM) serving faces dynamic KV-cache 
-pressure from heterogeneous request lengths, bursty arrivals, and 
-growing context windows. When memory demand exceeds capacity, the 
-serving engine must reclaim KV cache from active requests, yet existing 
-policies typically rely on coarse request-order heuristics or local 
-token-scoring rules with limited awareness of cross-request heterogeneity.
-We present \bidkv, a utility-guided KV reclamation policy that lifts 
-token-importance signals into a global, request-level utility formulation 
-for victim selection. For each candidate victim action, the system 
-estimates the KV capacity that would be recovered (\tokfree) and an 
-estimated disruption cost (\qualdelta), where \qualdelta is instantiated 
-in the current prototype from token-importance proxies rather than 
-application-provided bids or quality labels. A constrained greedy solver 
-ranks candidates by the utility ratio \utilfn = \tokfree / (\qualdelta + \stabeps) 
-and selects requests that recover the most KV capacity per unit estimated 
-penalty. Although \bidkv is designed to accommodate explicit application-level 
-preference signals, the prototype evaluated here operates without application-level 
-annotations. \bidkv is framework-portable: a four-layer adapter abstraction enables 
-non-invasive integration with vLLM and SGLang while reusing their native recovery 
-paths, yielding a controlled comparison in which strategies differ primarily in 
-victim-selection policy. Evaluated with Llama-3.1-8B-Instruct on an NVIDIA RTX A6000 
-using ShareGPT traces under Poisson arrivals, \bidkv achieves \bidkvSLOAttainment 
-SLO attainment at medium load (\bidkvSLOGainOverHtwoO above H2O-Style) and reduces 
-P95 TTFT by \bidkvTTFTReductionOverHtwoO at high load while maintaining equivalent throughput.
+Online large language model (LLM) serving faces dynamic KV-cache pressure from
+heterogeneous request lengths, bursty arrivals, and growing context windows.
+When memory demand exceeds capacity, the serving engine must reclaim KV cache
+from active requests, yet existing policies typically rely on coarse
+request-order heuristics or local token-scoring rules with limited awareness of
+cross-request heterogeneity. We present \bidkv, a utility-guided KV reclamation
+policy that lifts token-importance signals into a global, request-level utility
+formulation for victim selection. For each candidate victim action, the system
+estimates the KV capacity that would be recovered ($r$) and an estimated
+disruption cost ($\delta$). A constrained greedy solver ranks candidates by the
+utility ratio $U = r / (\delta + \epsilon)$ and selects the requests that
+recover the most KV capacity per unit estimated penalty. Although \bidkv is
+designed to accommodate explicit application-level preference signals, the
+prototype evaluated here instantiates $\delta$ using token-importance proxies
+rather than application-provided bids or quality labels. \bidkv is
+framework-portable: a four-layer adapter abstraction enables non-invasive
+integration with vLLM and SGLang while reusing their native recovery paths,
+yielding a controlled comparison in which strategies differ primarily in
+victim-selection policy. Evaluated with Llama-3.1-8B-Instruct on an NVIDIA RTX
+A6000 using ShareGPT traces under Poisson arrivals, \bidkv achieves
+\bidkvSLOAttainment\ SLO attainment at medium load (\bidkvSLOGainOverHtwoO\
+above H2O-Style) and reduces P95 TTFT by \bidkvTTFTReductionOverHtwoO\ at high
+load while maintaining equivalent throughput.
 \end{abstract}
 
 \maketitle
