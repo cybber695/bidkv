@@ -10,7 +10,7 @@
 | Python         | ≥ 3.10                                                               |
 | 外部依赖       | **零** — 仅依赖 Python stdlib                                        |
 | 论文           | SC 2026 投稿，deadline 2026-04-10                                    |
-| 当前 Phase     | **实验方案已冻结 (v2.3-frozen)**，进入 Phase C 实施                   |
+| 当前 Phase     | **Phase D 优化迭代** — 主攻 Mixed TTFT 优势，Long-Context 门控保底  |
 
 ## 项目定位
 
@@ -350,3 +350,59 @@ conda run -n sagellm python -m ruff check . && conda run -n sagellm python -m ru
 - GPU：NVIDIA RTX A6000 48GB · CUDA 12.5
 - 模型：Llama-3.1-8B-Instruct（bf16, 16GB）
 - 推理引擎：vLLM 0.17.1 (v1 架构) + SGLang (RadixAttention)
+- KV 限制：`--num-gpu-blocks-override 600`（600×16=9600 tokens，**必须指定否则无 KV 压力**）
+- 并发：`--max-num-seqs 32`，`--gpu-memory-utilization 0.85`
+
+## 实验结果现状与优化方针（2026-04-01）
+
+### 全量实验已完成
+
+7 策略 × 2 workloads × 3 rates × 3 runs = 126 组，结果在 `results/vllm_full_v1/`。
+额外的 v5b 验证 runs 在 `results/vllm_validation_v5b/` 和 `results/vllm_validation_v5b_mixed/`。
+
+### 关键发现
+
+**Mixed 工作负载：BidKV 在 TTFT 尾部延迟上有明显优势**
+- rate=5.7: bidkv(v5b) TTFT p99=3331ms（全场最佳），pe-sjf 6476ms，h2o 4782ms
+- rate=3.8: bidkv SLO(2s) ≈98%，TTFT p99 ≈3400-3800ms（Top 1-3）
+- **代价**：Tput 落后 pe-sjf ~16%，TPOT p99 偏高（proactive+SRPT recompute 开销）
+
+**Long-Context 工作负载：BidKV 存在结构性劣势**
+- Mode A recompute 语义下，long prompt 驱逐→重算成本 >> 调度收益
+- v5 三重门控（avg_prompt>500 skip reorder, remaining<prompt skip eviction）可缩小差距
+- 目标：与 pe-sjf 差距可控即可，不强求超越
+
+### 当前优化方针
+
+| 维度 | 策略 |
+|------|------|
+| **主攻** | Mixed 场景，TTFT 为核心指标，要求 BidKV 明显优于 vLLM 原生和其他 baselines |
+| **保底** | Long-Context 使用门控机制，力求与 pe-sjf 差距不大 |
+| **SLO 阈值** | Mixed 从 2s 调至 **1s** 以拉开策略间差距（2s 下各策略 SLO 差异仅 1-2pp） |
+| **指标展示** | 不展示 P50，改为展示 **P95**（P50 差异太小不具区分度） |
+| **迭代原则** | 新方案效果更好→更新；效果不好→保留老数据和方法 |
+
+### Mode A 结构性 Tradeoff
+
+proactive eviction + SRPT → TTFT↓（waiting 更快入场）但 Tput↓ + TPOT↑（recompute 开销）。
+这是 Mode A (request-level recompute) 的固有 tradeoff，非 bug。
+未来 Mode B (token-level release) 可消除此 tradeoff（issue #054）。
+
+### 各策略机制开关（scheduler_hook.py）
+
+| 机制 | pe / pe-sjf | slack-aware | random/h2o/uniform/bidkv |
+|------|-------------|-------------|--------------------------|
+| Waiting SJF | ❌/✅ | ❌ (EDF) | ✅ |
+| Proactive preempt | ❌ | ✅ | ✅ |
+| SRPT preempt | ❌ | ❌ | ✅ |
+| Running reorder | ❌ (LIFO) | ✅ (cached) | ✅ (cached) |
+| BidKV v5 gates | N/A | N/A | bidkv only |
+
+### 数据目录
+
+| 路径 | 内容 |
+|------|------|
+| `results/vllm_full_v1/` | 7×2×3×3=126 完整实验 |
+| `results/vllm_full_v1/backup_old_bidkv/` | 旧 BidKV 公式数据备份 |
+| `results/vllm_validation_v5b/` | v5b long_context rate=0.7 验证 |
+| `results/vllm_validation_v5b_mixed/` | v5b mixed rate=5.7 验证 |

@@ -75,19 +75,19 @@ class BaselineRegistry:
     def create_default_registry(self) -> None:
         """注册所有内置 baseline（延迟导入以避免循环依赖）。"""
         from bidkv.baselines.bidkv_strategy import BidKVStrategy
-        from bidkv.baselines.global_nobid import GlobalNoBidStrategy
         from bidkv.baselines.h2o_style import H2OStyleStrategy
         from bidkv.baselines.preempt_evict import PreemptEvictStrategy
+        from bidkv.baselines.preempt_evict_sjf import PreemptEvictSJFStrategy
         from bidkv.baselines.slack_aware import SlackAwareStrategy
         from bidkv.baselines.static_random import StaticRandomStrategy
         from bidkv.baselines.uniform import UniformStrategy
 
         defaults: list[BaselineStrategy] = [
             PreemptEvictStrategy(),
+            PreemptEvictSJFStrategy(),
             StaticRandomStrategy(),
             H2OStyleStrategy(),
             UniformStrategy(),
-            GlobalNoBidStrategy(),
             SlackAwareStrategy(),
             BidKVStrategy(),
         ]

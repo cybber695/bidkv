@@ -507,12 +507,12 @@ def generate_table1_data(aggregations: list[StrategyAggregation]) -> list[dict[s
             "has_solver": False,
             "design_rationale": "Isolates differentiated compression value",
         },
-        "global-nobid": {
-            "description": "System-inferred utility (no user bid interface)",
-            "has_scoring": True,
+        "preempt-evict-sjf": {
+            "description": "SJF admission + LIFO eviction (ablation baseline)",
+            "has_scoring": False,
             "has_bid": False,
-            "has_solver": True,
-            "design_rationale": "Key bid attribution — scoring + solver without bid",
+            "has_solver": False,
+            "design_rationale": "Isolates SJF admission contribution from eviction",
         },
         "slack-aware": {
             "description": "SLO deadline-aware victim selection",

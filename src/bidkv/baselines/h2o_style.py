@@ -5,8 +5,8 @@
 - H2O-Style（本模块）是调度策略：使用 H2OScoring 直接压缩，绕过 bid pipeline
 
 设计理由：隔离 bid 机制的贡献。H2O-Style 拥有 token-level scoring 信息，
-但不走 bid → pool → solver 流程。对比 H2O-Style → Global-NoBid 可揭示
-request-level utility 推断的增量价值。
+但不走 bid → pool → solver 流程。对比 H2O-Style → BidKV 可揭示
+U-score 多级贪心框架的增量价值。
 
 选择公式：compress(top_k(H2OScoring, 1 - heavy_ratio - recent_ratio))
 即压缩掉 H2OScoring 认为不重要的 token。

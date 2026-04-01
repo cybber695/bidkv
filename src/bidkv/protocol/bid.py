@@ -106,8 +106,8 @@ class CompressionBid:
             raise ValueError("algorithm_id must be a non-empty string")
         if self.tokens_freed <= 0:
             raise ValueError(f"tokens_freed must be > 0, got {self.tokens_freed}")
-        if not (0.0 <= self.quality_delta <= 1.0):
-            raise ValueError(f"quality_delta must be in [0.0, 1.0], got {self.quality_delta}")
+        if self.quality_delta < 0.0:
+            raise ValueError(f"quality_delta must be >= 0.0, got {self.quality_delta}")
         if self.compress_latency_ms < 0.0:
             raise ValueError(f"compress_latency_ms must be >= 0.0, got {self.compress_latency_ms}")
         if not (0.0 <= self.confidence <= 1.0):

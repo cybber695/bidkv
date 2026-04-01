@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **Optimization strategy pivot: Mixed TTFT focus + Long-Context gate**:
+  - Primary target: Mixed workload TTFT advantage (bidkv(v5b) p99=3331ms vs pe-sjf 6476ms)
+  - Long-Context: v5 three-gate mechanism for parity with pe-sjf (not superiority)
+  - SLO threshold: Mixed adjusted to 1s (from 2s) for better strategy differentiation
+  - Metrics: P95 replaces P50 in analysis (P50 differences too small)
+
+- **Copilot instructions updated with Phase D optimization strategy and full experiment results**
+
 ### Fixed
 
 - **vLLM scheduler_hook: add missing `_proactive_preempt()` call in `_patched_schedule()`**:

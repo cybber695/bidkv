@@ -132,11 +132,12 @@ class TestCompressionBid:
         assert bid.quality_delta == 1.0
 
     def test_quality_delta_out_of_range_raises(self) -> None:
-        """quality_delta 超出 [0, 1] 应抛出 ValueError"""
-        with pytest.raises(ValueError, match="quality_delta must be in"):
-            make_bid(quality_delta=1.01)
-        with pytest.raises(ValueError, match="quality_delta must be in"):
+        """quality_delta < 0 应抛出 ValueError (>= 0.0 is valid for Mode A)"""
+        with pytest.raises(ValueError, match="quality_delta must be >= 0.0"):
             make_bid(quality_delta=-0.01)
+        # Values > 1.0 are valid in Mode A (delta = 1 + 2*completion)
+        bid = make_bid(quality_delta=2.5)
+        assert bid.quality_delta == 2.5
 
     # --- 边界：confidence ---
 

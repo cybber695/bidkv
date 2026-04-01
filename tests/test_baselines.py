@@ -17,8 +17,8 @@ from bidkv.baselines import (
     BaselineStrategy,
     BidKVStrategy,
     CompressionAction,
-    GlobalNoBidStrategy,
     H2OStyleStrategy,
+    PreemptEvictSJFStrategy,
     PreemptEvictStrategy,
     RequestState,
     SlackAwareStrategy,
@@ -187,10 +187,10 @@ class TestBaselineRegistry:
         # 验证所有 7 个策略都已注册
         for name in [
             "preempt-evict",
+            "preempt-evict-sjf",
             "static-random",
             "h2o-style",
             "uniform",
-            "global-nobid",
             "slack-aware",
             "bidkv",
         ]:
@@ -372,50 +372,39 @@ class TestUniform:
 
 
 # ===========================================================================
-# Global-NoBid tests
+# Preempt-Evict-SJF tests
 # ===========================================================================
 
 
-class TestGlobalNoBid:
-    """Global-NoBid baseline 测试。"""
+class TestPreemptEvictSJF:
+    """Preempt-Evict-SJF ablation baseline 测试。"""
 
     def test_name(self) -> None:
-        assert GlobalNoBidStrategy().name == "global-nobid"
+        assert PreemptEvictSJFStrategy().name == "preempt-evict-sjf"
 
-    def test_uses_same_scoring_as_bidkv(self) -> None:
-        """Global-NoBid 使用与 BidKV 相同的 H2OScoring。"""
-        scorer = H2OScoring()
-        nobid = GlobalNoBidStrategy(scoring=scorer)
-        bidkv = BidKVStrategy(scoring=scorer)
-        assert nobid.scoring is bidkv.scoring
-
-    def test_respects_delta_budget(self) -> None:
+    def test_evicts_like_preempt_evict(self) -> None:
+        """与 preempt-evict 相同的 eviction 逻辑（按优先级驱逐）。"""
         candidates = _make_candidates_varied()
-        strategy = GlobalNoBidStrategy(delta_budget=0.01)
-        actions = strategy.select_victims(candidates, needed_tokens=1000)
-        # 严格的 delta_budget 应限制压缩量
-        total_delta = sum(a.metadata.get("estimated_quality_delta", 0) for a in actions)
-        assert total_delta <= 0.01 + 0.001  # 允许浮点误差
-
-    def test_greedy_by_utility(self) -> None:
-        """按 utility 贪心选择：高 tokens / 低 delta 的请求优先。"""
-        candidates = _make_candidates_varied()
-        strategy = GlobalNoBidStrategy(delta_budget=1.0)
-        actions = strategy.select_victims(candidates, needed_tokens=100)
-        assert len(actions) >= 1
-        for action in actions:
-            assert action.action_type == "compress"
+        sjf = PreemptEvictSJFStrategy()
+        base = PreemptEvictStrategy()
+        actions_sjf = sjf.select_victims(candidates, needed_tokens=200)
+        actions_base = base.select_victims(candidates, needed_tokens=200)
+        # 相同的 victim 选择顺序
+        assert [a.request_id for a in actions_sjf] == [a.request_id for a in actions_base]
+        # 都是 evict 类型
+        for a in actions_sjf:
+            assert a.action_type == "evict"
 
     def test_empty_candidates(self) -> None:
-        strategy = GlobalNoBidStrategy()
+        strategy = PreemptEvictSJFStrategy()
         assert strategy.select_victims([], needed_tokens=100) == []
 
-    def test_metadata_contains_utility(self) -> None:
-        candidates = _make_candidates_varied()
-        strategy = GlobalNoBidStrategy(delta_budget=1.0)
-        actions = strategy.select_victims(candidates, needed_tokens=100)
+    def test_metadata_contains_strategy_name(self) -> None:
+        candidates = _make_candidates(2, tokens_per_req=100)
+        strategy = PreemptEvictSJFStrategy()
+        actions = strategy.select_victims(candidates, needed_tokens=50)
         for action in actions:
-            assert "system_utility" in action.metadata
+            assert action.metadata["strategy"] == "preempt-evict-sjf"
 
 
 # ===========================================================================
@@ -478,27 +467,104 @@ class TestBidKV:
         assert BidKVStrategy().name == "bidkv"
 
     def test_uses_full_pipeline(self) -> None:
-        """BidKV 走完整 scoring → bid → pool → solver 流程。"""
+        """BidKV 走完整 bid → pool → solver 流程（Mode A: evict 语义）。"""
         candidates = _make_candidates_varied()
         strategy = BidKVStrategy(delta_budget=0.5)
         actions = strategy.select_victims(candidates, needed_tokens=100)
         assert len(actions) >= 1
         for action in actions:
-            assert action.action_type == "compress"
+            assert action.action_type == "evict"
             assert "bid_id" in action.metadata
             assert "utility" in action.metadata
 
-    def test_with_prebaked_bids(self) -> None:
-        """可以传入预生成的 bids（candidate-universe consistency）。"""
-        candidates = _make_candidates(2, tokens_per_req=100)
-        bids_by_request: dict[str, list[CompressionBid]] = {}
-        for req in candidates:
-            bids_by_request[req.request_id] = _make_bids_for_request(req.request_id, req.token_ids)
-        strategy = BidKVStrategy(delta_budget=0.5)
-        actions = strategy.select_victims(
-            candidates, needed_tokens=30, bids_by_request=bids_by_request
-        )
+    def test_completion_aware_ordering(self) -> None:
+        """高 completion 请求应排在后面（受保护），低 completion 优先驱逐。"""
+        candidates = [
+            RequestState(
+                "req-low",
+                current_tokens=500,
+                token_ids=tuple(range(500)),
+                num_prompt_tokens=450,
+                num_computed_tokens=460,
+                max_output_tokens=256,
+            ),
+            RequestState(
+                "req-high",
+                current_tokens=500,
+                token_ids=tuple(range(500)),
+                num_prompt_tokens=200,
+                num_computed_tokens=430,
+                max_output_tokens=256,
+            ),
+        ]
+        strategy = BidKVStrategy()
+        actions = strategy.select_victims(candidates, needed_tokens=100)
         assert len(actions) >= 1
+        # req-low has ~4% completion → low delta → high U → first victim
+        # req-high has ~90% completion → high delta → low U → protected
+        assert actions[0].request_id == "req-low"
+
+    def test_anti_starvation(self) -> None:
+        """Previously preempted requests should be protected (higher delta)."""
+        candidates = [
+            RequestState(
+                "req-fresh",
+                current_tokens=500,
+                token_ids=tuple(range(500)),
+                num_prompt_tokens=400,
+                num_computed_tokens=450,
+                max_output_tokens=256,
+                num_preemptions=0,
+            ),
+            RequestState(
+                "req-starved",
+                current_tokens=500,
+                token_ids=tuple(range(500)),
+                num_prompt_tokens=400,
+                num_computed_tokens=450,
+                max_output_tokens=256,
+                num_preemptions=3,
+            ),
+        ]
+        strategy = BidKVStrategy()
+        actions = strategy.select_victims(candidates, needed_tokens=100)
+        assert len(actions) >= 1
+        # req-fresh has same completion but 0 preemptions → lower delta → first victim
+        assert actions[0].request_id == "req-fresh"
+
+    def test_freed_dominant_over_completion(self) -> None:
+        """A much bigger request is evicted first even if near completion.
+
+        With delta = 1+2*completion, the max protection ratio is 3×.
+        A request >3× bigger always wins in utility despite completion.
+        """
+        candidates = [
+            RequestState(
+                "req-small-young",
+                current_tokens=200,
+                token_ids=tuple(range(200)),
+                num_prompt_tokens=190,
+                num_computed_tokens=195,
+                max_output_tokens=256,
+                num_preemptions=0,
+            ),
+            RequestState(
+                "req-large-old",
+                current_tokens=800,
+                token_ids=tuple(range(800)),
+                num_prompt_tokens=200,
+                num_computed_tokens=700,
+                max_output_tokens=256,
+                num_preemptions=0,
+            ),
+        ]
+        strategy = BidKVStrategy()
+        actions = strategy.select_victims(candidates, needed_tokens=100)
+        assert len(actions) >= 1
+        # req-large-old: 800 freed, ~completion 500/256→1.0, delta=3.0, U≈267
+        # req-small-young: 200 freed, ~completion 5/256≈0.02, delta≈1.04, U≈192
+        # Large one evicted first (freed dominates despite high completion)
+        assert actions[0].request_id == "req-large-old"
 
     def test_empty_candidates(self) -> None:
         strategy = BidKVStrategy()
@@ -524,10 +590,10 @@ class TestCandidateUniverseConsistency:
 
         strategies: list[BaselineStrategy] = [
             PreemptEvictStrategy(),
+            PreemptEvictSJFStrategy(),
             StaticRandomStrategy(seed=42),
             H2OStyleStrategy(),
             UniformStrategy(),
-            GlobalNoBidStrategy(delta_budget=0.5),
             SlackAwareStrategy(),
             BidKVStrategy(delta_budget=0.5),
         ]
@@ -552,10 +618,10 @@ class TestCandidateUniverseConsistency:
 
         strategies: list[BaselineStrategy] = [
             PreemptEvictStrategy(),
+            PreemptEvictSJFStrategy(),
             StaticRandomStrategy(seed=0),
             H2OStyleStrategy(),
             UniformStrategy(),
-            GlobalNoBidStrategy(delta_budget=0.5),
             SlackAwareStrategy(),
             BidKVStrategy(delta_budget=0.5),
         ]
