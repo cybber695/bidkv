@@ -129,9 +129,8 @@ designed to accommodate explicit application-level preference signals, the
 prototype evaluated here instantiates $\delta$ using token-importance proxies
 rather than application-provided bids or quality labels. \bidkv is
 framework-portable: a four-layer adapter abstraction enables non-invasive
-integration with vLLM and SGLang while reusing their native recovery paths,
-yielding a controlled comparison in which strategies differ primarily in
-victim-selection policy. Evaluated with Llama-3.1-8B-Instruct on an NVIDIA RTX
+integration with vLLM and SGLang while reusing their native recovery paths. 
+Evaluated with Llama-3.1-8B-Instruct on an NVIDIA RTX
 A6000 using ShareGPT traces under Poisson arrivals, \bidkv achieves
 \bidkvSLOAttainment\ SLO attainment at medium load (\bidkvSLOGainOverHtwoO\
 above H2O-Style) and reduces P95 TTFT by \bidkvTTFTReductionOverHtwoO\ at high
