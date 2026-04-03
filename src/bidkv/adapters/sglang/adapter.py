@@ -565,7 +565,7 @@ class SGLangAdapter(FrameworkAdapter):
         """
         if not self._config.is_active:
             return
-        # 部分 scoring 策略（如 H2OScoring）支持 decode-step 增量更新
+        # 部分 scoring 策略（如 PositionalScoring）支持 decode-step 增量更新
         if hasattr(self._scoring, "update_from_decode_step"):
             self._scoring.update_from_decode_step(attention_pattern)
         self._metrics.record_decode_step(request_id)

@@ -1,30 +1,19 @@
-"""H2O (Heavy-Hitter Oracle) 评分策略。
+"""位置启发式评分策略。
 
-基于 Zhang et al. (NeurIPS 2023) "H2O: Heavy-Hitter Oracle for Efficient
-Generative Inference of Large Language Models" 的核心思想。
+在没有真实 attention 数据的情况下（vLLM/SGLang 的 FlashAttention
+不暴露 output_attentions），使用位置启发式作为 token 重要度代理：
 
-核心原理
---------
-vLLM/SGLang 的 FlashAttention **不暴露** ``output_attentions``。H2O 使用
-KV cache 写入/读取频率作为注意力代理：统计 decode 阶段每个 token 被 attend to
-的累积次数（即 "heavy hitter"）。
+- **Attention Sink**：序列开头 token 有较高重要度（Xiao et al., 2023）
+- **Recency**：序列末尾 token 有较高重要度
 
-原始 H2O 论文使用"Heavy Hitter + Recent" 策略：
-- **Heavy Hitter**：累积注意力分数最高的 top-k token
-- **Recent**：最近生成的 token（局部性假设）
+如果外部通过 ``update_from_decode_step()`` 提供了注意力数据，
+则切换为 heavy-hitter + recent 评分。
+但在当前 Mode A（请求级调度）下，此路径不会被触发。
 
-两类 token 被标记为"重要"，其余 token 被标记为"可压缩"。
-
-精度边界声明
------------
-H2OScoring 在以下条件下可能退化：
-- **注意力稀疏度 > 90%**：大多数 token 的累积注意力近乎零，heavy hitter 聚集在极少数
-  token 上，此时 score 分布近似 binary（0 或 1），缺乏区分度。
-- **极长序列（>32K token）**：历史注意力累积可能饱和，新 token 被低估。
-- **多轮对话跨 turn**：前 turn 的 heavy hitter 可能不再与当前 turn 相关。
-
-建议在部署前通过 calibration 实验（H2OScoring vs AttentionWeightScoring 的
-Spearman rank correlation）验证 H2OScoring 在目标 workload 上的精度。
+重命名记录
+----------
+原名 ``H2OScoring``（h2o.py），因实际行为是位置启发式
+而非 attention-based 评分，重命名为 ``PositionalScoring``。
 """
 
 from __future__ import annotations
@@ -37,26 +26,21 @@ from bidkv.protocol.bid import CompressionBid
 from bidkv.scoring.bid_builder import build_bids
 
 
-class H2OScoring:
-    """H2O: 累积注意力 Heavy Hitter 作为重要度代理。
+class PositionalScoring:
+    """位置启发式 token 重要度评分。
+
+    默认使用 attention-sink + recency 位置启发式。
+    如果通过 ``update_from_decode_step()`` 提供了累积 attention 数据，
+    则切换为 heavy-hitter + recent 评分。
 
     Parameters
     ----------
     heavy_ratio:
-        Heavy hitter 比例（0~1），占总 token 数的比例作为"重要"。默认 0.2。
+        Heavy hitter 比例（0~1）。默认 0.2。
     recent_ratio:
-        Recent token 比例（0~1），最近的 token 被视为"重要"。默认 0.2。
+        Recent token 比例（0~1）。默认 0.2。
     algorithm_id:
-        算法标识符，用于 CompressionBid 中。默认 "h2o"。
-
-    Notes
-    -----
-    H2OScoring 需要在每个 decode step 通过 ``update_from_decode_step()`` 更新
-    累积注意力统计。由框架 adapter 负责回调。
-
-    Largest-First (was H2O-Style) ≠ H2OScoring：
-    - Largest-First 是 baseline 策略名（#046, renamed from h2o-style）
-    - H2OScoring 是评分实现（本 issue #043）
+        算法标识符。默认 "positional"。
     """
 
     def __init__(
@@ -64,7 +48,7 @@ class H2OScoring:
         *,
         heavy_ratio: float = 0.2,
         recent_ratio: float = 0.2,
-        algorithm_id: str = "h2o",
+        algorithm_id: str = "positional",
     ) -> None:
         if not (0.0 <= heavy_ratio <= 1.0):
             raise ValueError(f"heavy_ratio must be in [0, 1], got {heavy_ratio}")
@@ -166,7 +150,7 @@ class H2OScoring:
         if self._cumulative_attention and len(self._cumulative_attention) >= n:
             return self._score_from_cumulative(n)
         else:
-            return self._score_positional_heuristic(n)
+            return self._score_positional(n)
 
     def _score_from_cumulative(self, n: int) -> list[float]:
         """基于累积注意力的 heavy hitter + recent 评分。"""
@@ -202,7 +186,7 @@ class H2OScoring:
 
         return scores
 
-    def _score_positional_heuristic(self, n: int) -> list[float]:
+    def _score_positional(self, n: int) -> list[float]:
         """无累积注意力时的位置启发式评分。
 
         遵循 attention sink (Xiao et al., 2023) 观察：
@@ -265,7 +249,7 @@ class H2OScoring:
                 "heavy_ratio": self._heavy_ratio,
                 "recent_ratio": self._recent_ratio,
                 "decode_steps": self._decode_steps,
-                "scoring_method": "h2o_cumulative_attention",
+                "scoring_method": "positional",
             },
         )
 

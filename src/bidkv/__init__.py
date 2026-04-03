@@ -44,7 +44,7 @@ from bidkv.protocol import (
 )
 from bidkv.scoring import (
     AttentionWeightScoring,
-    H2OScoring,
+    PositionalScoring,
     RandomScoring,
     ScoringStrategy,
     UniformScoring,
@@ -77,7 +77,7 @@ __all__ = [
     "SolverConfig",
     # Scoring
     "AttentionWeightScoring",
-    "H2OScoring",
+    "PositionalScoring",
     "RandomScoring",
     "ScoringStrategy",
     "UniformScoring",

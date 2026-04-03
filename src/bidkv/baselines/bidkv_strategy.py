@@ -2,7 +2,7 @@
 
 这是 BidKV 的完整策略包装器（作为 baseline 接口的适配器）。
 scorer-agnostic：支持任意实现 ScoringStrategy 的评分器，
-默认使用 H2OScoring。
+默认使用 PositionalScoring。
 
 选择公式：U = r / (δ + ε)，greedy by U（Algorithm 1）。
 
@@ -25,7 +25,7 @@ from typing import Any
 from bidkv.baselines.base import BaselineStrategy, CompressionAction, RequestState
 from bidkv.pool import BidPoolManager
 from bidkv.protocol.bid import CompressionBid, make_bid_id
-from bidkv.scoring import H2OScoring, ScoringStrategy
+from bidkv.scoring import PositionalScoring, ScoringStrategy
 from bidkv.solver import GreedyBidSolver, SolverConfig
 
 
@@ -38,7 +38,7 @@ class BidKVStrategy(BaselineStrategy):
     Parameters
     ----------
     scoring:
-        ScoringStrategy 实例。若为 None，使用 H2OScoring 默认配置创建。
+        ScoringStrategy 实例。若为 None，使用 PositionalScoring 默认配置创建。
     delta_budget:
         质量损失上限。默认 0.15。
     """
@@ -49,7 +49,7 @@ class BidKVStrategy(BaselineStrategy):
         scoring: ScoringStrategy | None = None,
         delta_budget: float = 0.15,
     ) -> None:
-        self._scoring: ScoringStrategy = scoring or H2OScoring()
+        self._scoring: ScoringStrategy = scoring or PositionalScoring()
         self._delta_budget = delta_budget
         self._solver = GreedyBidSolver(SolverConfig(enabled=True, delta_budget=delta_budget))
 

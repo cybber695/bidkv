@@ -6,6 +6,16 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Comprehensive data analysis guide in copilot-instructions** (2026-04-03):
+  - Replaced brief JSON format snippet with full 8-section analysis reference
+  - Added file naming convention, all 13 top-level keys, all 10 request fields
+  - Documented adapter_metrics field name inconsistency (`total_compressions` vs `total_evictions`)
+  - Added summary field reference (11 keys, no p95/SLO)
+  - Added complete `load_run()` / `load_all_runs()` / `cross_rate_average()` code templates
+  - Added 7 known data traps table with correct workarounds
+  - Added audit-verified eviction reference values per strategy × workload
+  - Synced to both `.github/copilot-instructions.md` and `.github/agents/bidkv-agent.md`
+
 - **Rename h2o-style → largest-first** (2026-04-06):
   - `baselines/h2o_style.py` → `baselines/largest_first.py`
   - `H2OStyleStrategy` → `LargestFirstStrategy` (backward compat alias kept)

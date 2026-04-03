@@ -5,7 +5,7 @@
 - BaselineRegistry 注册与获取
 - 7 个 baseline 各 ≥ 3 个测试
 - Candidate-universe consistency（所有 baseline 使用同一候选池）
-- Largest-First (was H2O-Style) ≠ H2OScoring 区分验证
+- Largest-First (was H2O-Style) ≠ PositionalScoring 区分验证
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from bidkv.baselines import (
     UniformStrategy,
 )
 from bidkv.protocol.bid import CompressionBid
-from bidkv.scoring import H2OScoring
+from bidkv.scoring import PositionalScoring
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -87,8 +87,8 @@ def _make_candidates_varied() -> list[RequestState]:
 
 
 def _make_bids_for_request(request_id: str, token_ids: tuple[int, ...]) -> list[CompressionBid]:
-    """用 H2OScoring 为请求生成 bids。"""
-    scorer = H2OScoring()
+    """用 PositionalScoring 为请求生成 bids。"""
+    scorer = PositionalScoring()
     return scorer.generate_bids(
         request_id,
         token_ids,
@@ -292,13 +292,13 @@ class TestLargestFirst:
     def test_name(self) -> None:
         assert LargestFirstStrategy().name == "largest-first"
 
-    def test_largest_first_is_not_h2o_scoring(self) -> None:
-        """Largest-First ≠ H2OScoring：确认 Largest-First 是策略，使用 H2OScoring 实例。"""
-        scorer = H2OScoring()
+    def test_largest_first_is_not_positional_scoring(self) -> None:
+        """Largest-First ≠ PositionalScoring：确认是策略而非评分器。"""
+        scorer = PositionalScoring()
         strategy = LargestFirstStrategy(scoring=scorer)
         # Largest-First 是 BaselineStrategy 实例
         assert isinstance(strategy, BaselineStrategy)
-        # Largest-First 持有 H2OScoring 实例
+        # Largest-First 持有 PositionalScoring 实例
         assert strategy.scoring is scorer
 
     def test_compresses_with_scoring(self) -> None:
@@ -321,9 +321,9 @@ class TestLargestFirst:
         assert strategy.select_victims([], needed_tokens=100) == []
 
     def test_with_scoring_states(self) -> None:
-        """可以传入每个请求独立的 H2OScoring 实例。"""
+        """可以传入每个请求独立的 PositionalScoring 实例。"""
         candidates = [RequestState("req-1", current_tokens=100, token_ids=tuple(range(100)))]
-        scorer = H2OScoring()
+        scorer = PositionalScoring()
         # 用 decode 数据更新 scorer
         scorer.update_from_decode_step([float(i) for i in range(100)])
         strategy = LargestFirstStrategy()

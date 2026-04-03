@@ -13,21 +13,21 @@ from __future__ import annotations
 from typing import Any
 
 from bidkv.baselines.base import BaselineStrategy, CompressionAction, RequestState
-from bidkv.scoring import H2OScoring
+from bidkv.scoring import PositionalScoring
 
 
 class LargestFirstStrategy(BaselineStrategy):
     """Largest-First：容量贪心驱逐，优先释放 KV 占用最大的请求。
 
     对每个候选请求：
-    1. 使用 H2OScoring 对 token 评分
+    1. 使用 PositionalScoring 对 token 评分
     2. 计算可压缩 token 数（低重要度 token）
     3. 按可释放量从大到小排序，依次压缩直到满足 needed_tokens
 
     Parameters
     ----------
     scoring:
-        H2OScoring 实例。若为 None，使用默认配置创建。
+        PositionalScoring 实例。若为 None，使用默认配置创建。
     compressible_ratio:
         每个请求最多可压缩的 token 比例。默认 0.6
         （保留 heavy_ratio + recent_ratio = 0.4 的重要 token）。
@@ -36,12 +36,12 @@ class LargestFirstStrategy(BaselineStrategy):
     def __init__(
         self,
         *,
-        scoring: H2OScoring | None = None,
+        scoring: PositionalScoring | None = None,
         compressible_ratio: float = 0.6,
     ) -> None:
         if not (0.0 < compressible_ratio <= 1.0):
             raise ValueError(f"compressible_ratio must be in (0, 1], got {compressible_ratio}")
-        self._scoring = scoring or H2OScoring()
+        self._scoring = scoring or PositionalScoring()
         self._compressible_ratio = compressible_ratio
 
     @property
@@ -49,8 +49,8 @@ class LargestFirstStrategy(BaselineStrategy):
         return "largest-first"
 
     @property
-    def scoring(self) -> H2OScoring:
-        """当前使用的 H2OScoring 实例。"""
+    def scoring(self) -> PositionalScoring:
+        """当前使用的 PositionalScoring 实例。"""
         return self._scoring
 
     def select_victims(
@@ -68,8 +68,8 @@ class LargestFirstStrategy(BaselineStrategy):
         needed_tokens:
             需要释放的 token 数量。
         **kwargs:
-            可选 ``scoring_states``：dict[str, H2OScoring]，
-            每个请求的独立 H2OScoring 实例（带累积注意力）。
+            可选 ``scoring_states``：dict[str, PositionalScoring]，
+            每个请求的独立 PositionalScoring 实例（带累积注意力）。
 
         Returns
         -------
@@ -80,7 +80,7 @@ class LargestFirstStrategy(BaselineStrategy):
             return []
 
         # 可选：每个请求有独立的 scoring 实例（含累积注意力数据）
-        scoring_states: dict[str, H2OScoring] = kwargs.get("scoring_states", {})
+        scoring_states: dict[str, PositionalScoring] = kwargs.get("scoring_states", {})
 
         # 为每个候选计算可压缩 token 数
         candidate_info: list[tuple[RequestState, int, float]] = []
