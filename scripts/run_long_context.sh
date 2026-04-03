@@ -13,7 +13,7 @@ COMMON="--workloads long_context --runs 3 --num-gpu-blocks-override 600 --gpu-me
 mkdir -p "$OUT"
 echo "[$(date)] Starting long-context experiments (7 strategies × 3 rates × 3 runs = 63)" | tee -a $LOG
 
-STRATEGIES=(bidkv preempt-evict preempt-evict-sjf h2o-style static-random uniform slack-aware)
+STRATEGIES=(bidkv preempt-evict preempt-evict-sjf largest-first static-random uniform slack-aware)
 
 for strat in "${STRATEGIES[@]}"; do
     echo "[$(date)] Starting $strat (9 runs)..." | tee -a $LOG

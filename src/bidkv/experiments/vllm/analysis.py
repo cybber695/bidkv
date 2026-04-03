@@ -497,8 +497,8 @@ def generate_table1_data(aggregations: list[StrategyAggregation]) -> list[dict[s
             "has_solver": False,
             "design_rationale": "Control group — isolates information value",
         },
-        "h2o-style": {
-            "description": "Token-level importance scoring, no bid mechanism",
+        "largest-first": {
+            "description": "Capacity-greedy victim selection (evicts largest KV)",
             "has_scoring": True,
             "has_bid": False,
             "has_solver": False,

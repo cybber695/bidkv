@@ -73,8 +73,7 @@ class GlobalNoBidStrategy(BaselineStrategy):
     def _completion_factor(req: RequestState) -> float:
         """Compute recompute-cost penalty for near-completion candidates.
 
-        Same logic as BidKVStrategy._completion_factor — keeps ablation clean
-        (the only difference is bid protocol vs direct greedy).
+        Quadratic ramp: 0% → 1.0×, 50% → 2.0×, 80% → 3.56×, 100% → 5.0×.
         """
         if req.max_output_tokens <= 0 or req.num_computed_tokens <= 0:
             return 1.0

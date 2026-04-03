@@ -62,24 +62,6 @@ class BidKVStrategy(BaselineStrategy):
         """当前使用的评分策略实例。"""
         return self._scoring
 
-    @staticmethod
-    def _completion_factor(req: RequestState) -> float:
-        """Compute recompute-cost penalty multiplier for a candidate.
-
-        Near-completion requests get a multiplier > 1 that inflates their
-        token scores → higher quality_delta → lower utility. This steers the
-        solver away from truncating requests that would be expensive to redo
-        with little remaining benefit.
-
-        Returns 1.0 (no penalty) for requests with unknown completion info.
-        """
-        if req.max_output_tokens <= 0 or req.num_computed_tokens <= 0:
-            return 1.0
-        num_output = max(0, req.num_computed_tokens - req.num_prompt_tokens)
-        completion = min(1.0, num_output / req.max_output_tokens)
-        # Quadratic ramp: 0% → 1.0×, 50% → 2.0×, 80% → 3.56×, 100% → 5.0×
-        return 1.0 + completion * completion * 4.0
-
     def select_victims(
         self,
         candidates: list[RequestState],

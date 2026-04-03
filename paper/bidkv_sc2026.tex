@@ -71,7 +71,7 @@
 % Abstract
 % ============================================================
 \begin{abstract}
-Online large language model (LLM) serving faces dynamic KV-cache pressure from heterogeneous request lengths and bursty arrivals. When memory demand exceeds capacity, serving engines must reclaim KV cache from active requests, but existing policies rely on coarse request-order heuristics or local token-scoring rules with limited cross-request awareness. We present BidKV, a utility-guided reclamation policy for request-level victim selection. BidKV estimates, for each candidate action, the KV capacity recovered and the disruption cost, then prioritizes requests by recovered capacity per unit cost. The current prototype instantiates disruption cost using request-lifecycle proxies (completion progress, prompt length, and preemption history) rather than application-provided bids. BidKV is portable across frameworks via a four-layer adapter and integrates non-invasively with vLLM and SGLang. With Llama-3.1-8B-Instruct on an NVIDIA RTX A6000 using ShareGPT traces under Poisson arrivals, BidKV improves 300\,ms TTFT-SLO attainment by 20.6\% on average over vLLM's native policy, reduces P95 TTFT by 89.6\%, and increases 500\,ms goodput by 27.4\%.
+When KV-cache demand exceeds GPU memory capacity during online LLM serving, serving engines reclaim cache from active requests to admit waiting ones. Poor victim selection wastes recomputation, delays admission of queued requests, and degrades first-token latency---a metric directly visible to users. Existing policies rely on coarse request-order heuristics (LIFO, FCFS) or independent per-request scoring rules, lacking both explicit reclamation-cost signals and cross-request coordination. We present BidKV, a utility-guided reclamation policy that improves \emph{admission responsiveness} under KV pressure. Each active request produces a bid encoding recoverable capacity and estimated disruption cost; a coordinated solver selects victims that free the required capacity at minimum aggregate cost. The current prototype instantiates disruption cost from request-lifecycle proxies (completion progress, prompt length, preemption history) under recompute-fallback semantics. BidKV integrates non-invasively with vLLM and SGLang via a portable adapter layer. Evaluated with Llama-3.1-8B-Instruct on an NVIDIA RTX A6000 under ShareGPT traces, BidKV reduces P95 TTFT by 89\% and improves 300\,ms SLO attainment by 14.9\,pp over vLLM's native policy, at comparable throughput.
 \end{abstract}
 
 \maketitle
@@ -88,7 +88,7 @@ budget, and arrival pattern; they also progress asynchronously as some requests
 are still in prefill while others are already deep into
 decoding~\cite{Kwon2023, Yu2022, Zheng2024lmsys}.  Under such mixed-length,
 bursty workloads, the key-value~(KV) cache becomes a dominant runtime
-resource~\cite{Vaswani2017, Pope2023}: new arrivals
+resource~\cite{Vaswani2017, Pope2022}: new arrivals
 allocate KV state, ongoing requests expand it token by token, and completed or
 preempted requests release it at different points in their lifecycle.  Aggregate
 KV demand therefore fluctuates on short timescales and can repeatedly exceed
@@ -108,9 +108,13 @@ near completion can waste substantial prior work and incur expensive
 recomputation, whereas reclaiming a request that has only recently entered
 decoding may free similar capacity at much lower system disruption.  Poor victim
 choices can also cascade: recomputation re-inflates KV demand, which in turn
-triggers further reclamation, amplifying tail latency and destabilizing service
-behavior.  Active-KV reclamation is therefore a cross-request victim-selection
-problem that must account for heterogeneous reclamation costs.
+triggers further reclamation---a cycle that keeps KV capacity occupied by
+recomputing victims rather than available for waiting requests.  The direct
+consequence is admission-latency degradation: queued requests wait longer to
+receive their first token, driving up time-to-first-token~(TTFT) and eroding
+service-level objective~(SLO) attainment.  Active-KV reclamation is therefore a
+cross-request victim-selection problem whose quality directly governs admission
+responsiveness under sustained KV pressure.
 
 Because reclamation costs are heterogeneous, the scheduler needs
 \emph{explicit per-request cost signals} to distinguish cheap victims from
@@ -162,12 +166,17 @@ integrations require no source-code modification confirms that the bid
 interface is cleanly separated from framework-specific scheduling internals.
 \bidkv controls \emph{which} request is reclaimed, not \emph{how}.  Under
 recompute-fallback execution, the policy does not alter final outputs; the
-differentiation lies entirely in scheduling efficiency.  The value of
-coordinated reclamation is operating-regime dependent: under sustained
-mixed-length KV pressure, \bidkv's utility-guided selection provides
-substantial benefit; under low pressure, victim selection remains governed by the
-framework's native ordering, with \bidkv's utility-guided reorder
-activating only under sustained high-pressure conditions.
+differentiation lies entirely in scheduling efficiency.  The primary benefit is
+improved admission responsiveness: by selecting victims whose reclamation
+frees adequate capacity at low recompute cost, \bidkv reduces the time
+waiting requests spend queued for KV allocation, yielding lower TTFT and
+higher SLO attainment.  This comes at a modest cost in throughput and
+per-token decode latency, a tradeoff that favors latency-sensitive
+deployments.  The benefit is operating-regime dependent: under sustained
+mixed-length KV pressure, utility-guided selection provides substantial
+gains; under low pressure, victim selection remains governed by the
+framework's native ordering, with \bidkv's reorder activating only under
+sustained high-pressure conditions.
 
 \paragraph{Contributions.}
 \begin{enumerate}[leftmargin=*,nosep]
@@ -209,7 +218,7 @@ model with $L$~layers, $H$~KV heads (via grouped-query
 attention~\cite{Ainslie2023}), and head dimension~$d_h$, a single request of
 length~$n$ stores $2LHd_h n$ elements.  With bf16 precision, Llama-3.1-8B-Instruct ($L{=}32,
 H{=}8_{\text{kv}}, d_h{=}128$) allocates 128\,KiB per token per
-request~\cite{Dubey2024}.  vLLM~\cite{Kwon2023} manages this state through
+request~\cite{Grattafiori2024}.  vLLM~\cite{Kwon2023} manages this state through
 PagedAttention: physical GPU memory is partitioned into fixed-size \emph{blocks}
 that are mapped to logical positions via a block table.  On a 48\,GiB
 A6000 with $\sim$16\,GiB occupied by model weights~\cite{Pope2023}, the
@@ -327,7 +336,7 @@ Scissorhands~\cite{Liu2023scissorhands} exploits persistence-of-importance.
 SnapKV~\cite{Li2024snapkv} clusters attention features to compress prefix
 cache.
 KIVI~\cite{Liu2024kivi} uses asymmetric 2-bit KV quantization.
-PyramidKV~\cite{Zhang2024pyramidkv} applies pyramid budgets across layers.
+PyramidKV~\cite{Zhang2025pyramidkv} applies pyramid budgets across layers.
 These methods effectively reduce per-request KV footprint, but each applies a
 fixed budget and scoring rule to every request independently.  They do not
 coordinate across the batch to reason about which \emph{request} to target, nor
@@ -634,7 +643,7 @@ We evaluate \bidkv along three dimensions: (1)~overall serving performance
 
 \paragraph{Hardware and model.}
 All experiments run on a single NVIDIA RTX A6000 GPU (48\,GiB) with CUDA~12.5.
-We serve Llama-3.1-8B-Instruct~\cite{Dubey2024} in bf16 precision
+We serve Llama-3.1-8B-Instruct~\cite{Grattafiori2024} in bf16 precision
 ($\sim$16\,GiB model weight).
 
 \paragraph{Inference engine.}

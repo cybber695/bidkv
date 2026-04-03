@@ -6,6 +6,38 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- **Rename h2o-style → largest-first** (2026-04-06):
+  - `baselines/h2o_style.py` → `baselines/largest_first.py`
+  - `H2OStyleStrategy` → `LargestFirstStrategy` (backward compat alias kept)
+  - Strategy name: `"h2o-style"` → `"largest-first"`
+  - Config constant: `STRATEGY_H2O_STYLE` → `STRATEGY_LARGEST_FIRST`
+  - Added `STRATEGY_LEGACY_NAMES` mapping for frozen result data compatibility
+  - `scoring/h2o.py`, `h2o_hook.py` files unchanged (scoring module, not strategy)
+  - All analysis display names updated to "Largest-First"
+
+### Removed
+
+- **Remove dead `BidKVStrategy._completion_factor()`** (2026-04-06):
+  - Method was never called by `select_victims()` (v8 formula uses inline calculation)
+  - `GlobalNoBidStrategy._completion_factor()` retained (still in use)
+
+### Fixed
+
+- **Remove avg_prompt > 500 long-context gate from BidKV reorder** (2026-04-03):
+  - `scheduler_hook.py` `_reorder_running_for_preemption()`: removed the
+    `avg_prompt > 500 → return` guard that completely disabled quality-aware
+    reorder for long-context workloads (avg prompt ~1785 tokens).
+  - Root cause: gate was designed for mixed workload (avg ~300-500) but
+    prevented BidKV's core mechanism from operating in long-context.
+  - BidKV's U-score already handles recompute concerns via completion factor
+    and anti-starvation penalty — the blunt prompt-length gate was redundant.
+  - KV > 95% pressure gate retained (no reorder when KV isn't under pressure).
+  - Expected impact: BidKV regains quality-aware victim selection for
+    long-context, matching the mechanism that achieved SLO #1 + TTFT #1
+    in mixed workload.
+
+### Changed
+
 - **Metric system FROZEN: 4-column main table (v8-frozen)** (2026-04-02):
   - **FROZEN** — 后续实验（long_context、SGLang）使用相同 4 列体系
   - Main table: Throughput + SLO attainment(300ms) + TTFT p95 + TPOT p95

@@ -264,7 +264,7 @@ def _reorder_waiting_for_admission(scheduler: Any, adapter: VLLMAdapter) -> None
     │ preempt-evict     │ FCFS — no reorder (true vLLM default)       │
     │ preempt-evict-sjf │ SJF by prompt_tokens (LIFO eviction ablation)│
     │ static-random     │ SJF by prompt_tokens                        │
-    │ h2o-style         │ SJF by prompt_tokens                        │
+    │ largest-first     │ SJF by prompt_tokens                        │
     │ uniform           │ SJF by prompt_tokens                        │
     │ slack-aware       │ EDF by arrival_time (≈ FCFS under uniform SLO) │
     │ bidkv             │ SJF by prompt_tokens (same as other SJF)    │
@@ -305,7 +305,7 @@ def _reorder_waiting_for_admission(scheduler: Any, adapter: VLLMAdapter) -> None
             waiting.append(req)
 
     else:
-        # All SJF strategies (preempt-evict-sjf, static-random, h2o-style,
+        # All SJF strategies (preempt-evict-sjf, static-random, largest-first,
         # uniform, bidkv): SJF by prompt_tokens.
         # max_tokens is a standard API param accessible to all — NOT a
         # bid signal — so admission uses prompt_tokens only.
@@ -329,7 +329,7 @@ def _reorder_running_for_preemption(scheduler: Any, adapter: VLLMAdapter) -> Non
     │ preempt-evict     │ NO reorder — pure vLLM default (LIFO)       │
     │ preempt-evict-sjf │ NO reorder — LIFO eviction (SJF ablation)   │
     │ static-random     │ select_victims(): random victim selection    │
-    │ h2o-style         │ select_victims(): attention-importance based │
+    │ largest-first     │ select_victims(): capacity-greedy eviction   │
     │ uniform           │ select_victims(): equal treatment            │
     │ slack-aware       │ select_victims(): SLO-slack based            │
     │ bidkv             │ select_victims(): bid-informed priority      │
@@ -360,17 +360,11 @@ def _reorder_running_for_preemption(scheduler: Any, adapter: VLLMAdapter) -> Non
     #   native preemption victim selection. BidKV's U = r/(δ+ε) scoring
     #   puts the most efficient victim at the end for running.pop().
     #
-    # The full reorder has a ~62ms p95 cost at high rates (rate=5.7)
-    # compared to pure LIFO, but provides 36% p99 improvement. All
-    # alternative approaches (targeted swap, threshold tuning, proactive
-    # eviction, anti-starvation) performed worse than this design.
+    # U-score naturally handles long-context recompute concerns:
+    #   - completion factor penalizes near-done requests (避免驱逐快完成的)
+    #   - anti-starvation (0.3×preemptions) prevents cascading evictions
+    #   - freed dominates ordering → efficient KV reclamation
     if strategy_name == "bidkv" and len(running) >= 2:
-        total_prompt = sum(getattr(r, "num_prompt_tokens", 0) for r in running)
-        avg_prompt = total_prompt / len(running)
-        # Long-context guard: LIFO is safer when recompute costs are high.
-        if avg_prompt > 500:
-            return
-
         # Pressure gate: below 95%, LIFO is optimal.
         kv_mgr = getattr(scheduler, "kv_cache_manager", None)
         if kv_mgr is not None:
@@ -874,7 +868,7 @@ def _patched_update_from_output(
     # on strategies that don't benefit from cumulative attention data).
     # Note: BidKV Mode A uses completion-ratio δ, not H2O token scores.
     # Sampled at 20% (every 5th step) to reduce CPU overhead.
-    _H2O_STRATEGIES = ("h2o-style",)
+    _H2O_STRATEGIES = ("largest-first",)
     if adapter._experiment_strategy_name in _H2O_STRATEGIES:
         h2o_counter = getattr(scheduler, "_bidkv_h2o_counter", 0) + 1
         scheduler._bidkv_h2o_counter = h2o_counter

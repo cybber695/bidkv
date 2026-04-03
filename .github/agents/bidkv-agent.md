@@ -354,6 +354,50 @@ conda run -n sagellm python -m ruff check . && conda run -n sagellm python -m ru
 | Phase D        | 04-01~08     | #039 论文写作冲刺                        |
 | SC 2026 投稿   | 2026-04-10   | 论文截止                                     |
 
+## 实验结果 JSON 数据格式（mixed 与 long_context 通用）
+
+**⚠️ 分析实验数据时必须使用以下正确字段名，不要凭记忆猜测。**
+
+```python
+# 顶层结构
+d = json.load(open(result_file))
+d['request_results']   # ✅ 请求列表（list[dict]）
+d['duration_s']        # ✅ 运行时长（秒）
+d['adapter_metrics']   # ✅ 策略指标（dict）
+d['summary']           # ✅ 预计算汇总（dict）
+
+# ❌ 错误字段名（不存在）：
+# d['requests']        — 不存在，用 d['request_results']
+# d['duration']        — 不存在，用 d['duration_s']
+
+# 单个请求字段
+r = d['request_results'][0]
+r['ttft_ms']           # ✅ TTFT（毫秒，已经是 ms 单位，不需要 ×1000）
+r['total_latency_ms']  # ✅ 端到端延迟（毫秒）
+r['completion_tokens'] # ✅ 生成 token 数
+r['prompt_tokens']     # ✅ prompt token 数（long_context 中可能为 0）
+r['error']             # ✅ 错误信息（成功时为空字符串 ''，不是 None）
+r['request_id']        # ✅ 请求 ID
+r['submit_time']       # ✅ 提交时间戳
+r['first_token_time']  # ✅ 首 token 时间戳
+r['finish_time']       # ✅ 完成时间戳
+
+# ❌ 错误字段名（不存在）：
+# r['ttft']            — 不存在，用 r['ttft_ms']
+# r['tpot']            — 不存在，需手动计算
+# r['latency']         — 不存在，用 r['total_latency_ms']
+
+# TPOT 计算方式（无原生字段，必须手动算）：
+tpot_ms = (r['total_latency_ms'] - r['ttft_ms']) / (r['completion_tokens'] - 1)
+# 前提：completion_tokens > 1 且 ttft_ms 和 total_latency_ms 均非 None
+
+# 过滤成功请求：
+ok = [r for r in d['request_results'] if not r.get('error')]
+# ❌ 不要用：r.get('error') is None（error 是空字符串 '' 不是 None）
+
+# SLO 阈值：mixed 用 300ms，long_context 用 2000ms
+```
+
 ## 实验硬件
 
 - GPU：NVIDIA RTX A6000 48GB · CUDA 12.5

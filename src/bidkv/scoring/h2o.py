@@ -54,8 +54,8 @@ class H2OScoring:
     H2OScoring 需要在每个 decode step 通过 ``update_from_decode_step()`` 更新
     累积注意力统计。由框架 adapter 负责回调。
 
-    H2O-Style ≠ H2OScoring：
-    - H2O-Style 是 baseline 策略名（#046）
+    Largest-First (was H2O-Style) ≠ H2OScoring：
+    - Largest-First 是 baseline 策略名（#046, renamed from h2o-style）
     - H2OScoring 是评分实现（本 issue #043）
     """
 

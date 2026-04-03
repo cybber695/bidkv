@@ -1,15 +1,11 @@
-"""H2O-Style baseline — token 级重要性压缩，不走 bid 机制。
+"""Largest-First baseline — 容量贪心驱逐策略。
 
-**H2O-Style ≠ H2OScoring**：
-- H2OScoring（#043）是评分实现：计算 token 重要度分数
-- H2O-Style（本模块）是调度策略：使用 H2OScoring 直接压缩，绕过 bid pipeline
+Largest-First 按 KV 占用量（current_tokens）降序驱逐请求，
+贪心地优先释放 KV 占用最大的请求以腾出空间。
 
-设计理由：隔离 bid 机制的贡献。H2O-Style 拥有 token-level scoring 信息，
-但不走 bid → pool → solver 流程。对比 H2O-Style → BidKV 可揭示
-U-score 多级贪心框架的增量价值。
-
-选择公式：compress(top_k(H2OScoring, 1 - heavy_ratio - recent_ratio))
-即压缩掉 H2OScoring 认为不重要的 token。
+历史：此策略最初命名为 h2o-style，但实际行为是 capacity-greedy
+（无真实 attention 数据时退化为按 KV 大小排序），故重命名为 largest-first。
+已冻结实验数据中 h2o-style 的结果等同于 largest-first。
 """
 
 from __future__ import annotations
@@ -20,8 +16,8 @@ from bidkv.baselines.base import BaselineStrategy, CompressionAction, RequestSta
 from bidkv.scoring import H2OScoring
 
 
-class H2OStyleStrategy(BaselineStrategy):
-    """H2O-Style：用 H2O scoring 压缩低重要度 token，不走 bid 机制。
+class LargestFirstStrategy(BaselineStrategy):
+    """Largest-First：容量贪心驱逐，优先释放 KV 占用最大的请求。
 
     对每个候选请求：
     1. 使用 H2OScoring 对 token 评分
@@ -50,7 +46,7 @@ class H2OStyleStrategy(BaselineStrategy):
 
     @property
     def name(self) -> str:
-        return "h2o-style"
+        return "largest-first"
 
     @property
     def scoring(self) -> H2OScoring:
@@ -126,7 +122,7 @@ class H2OStyleStrategy(BaselineStrategy):
                     action_type="compress",
                     target_tokens=tokens_to_free,
                     metadata={
-                        "strategy": "h2o-style",
+                        "strategy": "largest-first",
                         "estimated_quality_delta": avg_delta,
                         "compressible_tokens": compressible,
                     },
