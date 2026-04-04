@@ -278,7 +278,7 @@ bars_rc = ax_a.bar(
     color="#D63027",
     alpha=0.80,
     hatch="//",
-    label="Est. recompute cost ($r \\cdot$ progress)",
+    label="Est. reclamation cost ($r \\cdot$ progress)",
 )
 
 # Find positions of LIFO and Utility picks in the sorted array
@@ -314,7 +314,7 @@ ax_a.set_xticklabels(req_labels)
 ax_a.set_xlabel("Concurrent requests at pressure event\n(sorted by KV tokens held, high→low)")
 ax_a.set_ylabel("Tokens")
 ax_a.set_title(
-    f"(a) Per-request KV footprint vs. recompute cost\n"
+    f"(a) Per-request KV footprint vs. reclamation cost\n"
     f"({n} concurrent requests, long-context, rate=0.5 req/s)",
     pad=3,
 )
@@ -323,9 +323,9 @@ ax_a.legend(loc="upper right", framealpha=0.85, handletextpad=0.3, borderpad=0.4
 ax_a.grid(True, axis="y", linestyle=":", alpha=0.5)
 
 # ── Panel B: policy comparison (3 metrics) ────────────────────────────────────
-metrics = ["Tokens\nfreed", "Avg recompute\ncost", "Cascade\nfactor (est.)"]
-lifo_vals_b = [lifo_stats["total_freed"], lifo_stats["avg_recompute"], lifo_stats["cascade_factor"]]
-util_vals_b = [util_stats["total_freed"], util_stats["avg_recompute"], util_stats["cascade_factor"]]
+metrics = ["Tokens\nfreed", "Avg reclamation\ncost"]
+lifo_vals_b = [lifo_stats["total_freed"], lifo_stats["avg_recompute"]]
+util_vals_b = [util_stats["total_freed"], util_stats["avg_recompute"]]
 
 # Normalise each metric to utility-guided = 1.0 for fair comparison
 norm_vals = [max(u, 1e-9) for u in util_vals_b]

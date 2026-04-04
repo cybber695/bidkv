@@ -1,7 +1,7 @@
 """Random 评分策略 — 消融实验用基线。
 
 为每个 token 随机赋予重要度分数。用于消融实验中验证：
-有信息量的评分策略（H2O/Attention）vs 随机猜测的差距。
+有信息量的评分策略（Positional/Attention）vs 随机猜测的差距。
 
 注意：使用固定 seed 时可复现。
 """

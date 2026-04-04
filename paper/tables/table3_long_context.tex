@@ -1,24 +1,23 @@
 \begin{table}[t]
 \centering
 \caption{Long-context workload: cross-rate average
-  (vLLM, 500~req/run, rates 0.35/0.5/0.7\,req/s, mean of 3~runs).
-  Best in \textbf{bold}.
-  \textcolor{red}{\textbf{Data collection in progress.}}}
+  (vLLM, Llama-3.1-8B-Instruct, A6000, 500~req/run,
+  rates 0.35/0.5/0.7\,req/s, SLO threshold 2{,}000\,ms,
+  mean of 3~runs).
+  Best in \textbf{bold}; second-best \underline{underlined}.}
 \label{tab:long_context}
 \footnotesize
 \begin{tabular}{@{}l c c c c@{}}
 \toprule
-\textbf{Strategy} & \textbf{Goodput} & \textbf{SLO}
-  & \textbf{TTFT P95} & \textbf{Norm Lat} \\
-  & (500\,ms) & (300\,ms) & (ms) & (ms/tok) \\
+\textbf{Strategy} & \textbf{Throughput}
+  & \textbf{SLO} & \textbf{TTFT P95} & \textbf{TPOT P95} \\
+  & (req/s) & (2000\,ms, \%) & (ms) & (ms) \\
 \midrule
-PE (default)      & --- & --- & --- & --- \\
-PE-SJF            & --- & --- & --- & --- \\
-Static-Random     & --- & --- & --- & --- \\
-H2O-Style         & --- & --- & --- & --- \\
-Uniform           & --- & --- & --- & --- \\
-Slack-Aware       & --- & --- & --- & --- \\
-\textbf{BidKV}    & --- & --- & --- & --- \\
+PE (default)      & 0.374 & 21.2 & 80135 & 181.4 \\
+PE-SJF            & 0.442 & 74.9 & 20264 & \textbf{144.3} \\
+Static-Random     & \textbf{0.447} & 75.0 & \textbf{14569} & \underline{162.5} \\
+Largest-First     & 0.435 & \textbf{76.6} & 16262 & 211.3 \\
+\textbf{BidKV}    & \underline{0.443} & \underline{75.6} & \underline{15492} & 179.6 \\
 \bottomrule
 \end{tabular}
 \end{table}

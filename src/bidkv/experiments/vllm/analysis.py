@@ -526,7 +526,7 @@ def generate_table1_data(aggregations: list[StrategyAggregation]) -> list[dict[s
             "design_rationale": "Quality-unaware scheduling baseline",
         },
         "bidkv": {
-            "description": "Full BidKV pipeline (H2O scoring + bid + solver)",
+            "description": "Full BidKV pipeline (positional scoring + bid + solver)",
             "has_scoring": True,
             "has_bid": True,
             "has_solver": True,

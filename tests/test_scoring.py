@@ -7,7 +7,7 @@
 - UniformScoring 策略
 - RandomScoring 策略
 - generate_bids() 返回合法 CompressionBid
-- H2O vs AttentionWeight Spearman rank correlation
+- Positional vs AttentionWeight Spearman rank correlation
 """
 
 from __future__ import annotations
@@ -100,7 +100,7 @@ def _spearman_rank_correlation(x: list[float], y: list[float]) -> float:
 class TestScoringStrategyProtocol:
     """测试所有策略是否满足 ScoringStrategy Protocol。"""
 
-    def test_h2o_is_scoring_strategy(self) -> None:
+    def test_positional_is_scoring_strategy(self) -> None:
         scorer = PositionalScoring()
         assert isinstance(scorer, ScoringStrategy)
 
@@ -123,7 +123,7 @@ class TestScoringStrategyProtocol:
 
 
 class TestPositionalScoring:
-    """H2O Heavy Hitter Oracle 评分策略测试。"""
+    """Positional 评分策略测试。"""
 
     def test_init_defaults(self) -> None:
         scorer = PositionalScoring()
@@ -429,24 +429,24 @@ class TestRandomScoring:
 
 
 # ===========================================================================
-# H2O vs AttentionWeight Spearman rank correlation 测试
+# Positional vs AttentionWeight Spearman rank correlation 测试
 # ===========================================================================
 
 
 class TestScoringCorrelation:
-    """验证 H2O proxy scoring 与 full attention weight scoring 的一致性。
+    """验证 Positional proxy scoring 与 full attention weight scoring 的一致性。
 
     验收标准 #6：Spearman rank correlation >= 0.7（在模拟数据上）。
     """
 
     def test_spearman_correlation_on_simulated_data(self) -> None:
-        """在模拟 attention pattern 上，H2O 与 AttentionWeight 排名相关性 >= 0.7。
+        """在模拟 attention pattern 上，Positional 与 AttentionWeight 排名相关性 >= 0.7。
 
         模拟设置：
         - 100 个 token
-        - 生成一个"真实"注意力分布（模拟重要 token 集中在某些位置）
+        - 生成一个“真实”注意力分布（模拟重要 token 集中在某些位置）
         - AttentionWeight 使用真实权重
-        - H2O 从多个 decode step 累积同一分布的注意力
+        - Positional 从多个 decode step 累积同一分布的注意力
         """
         n = 100
         token_ids = list(range(n))
@@ -475,25 +475,25 @@ class TestScoringCorrelation:
         attn_scores = attn_scorer.score(token_ids, attention_weights=attn_weights)
 
         # PositionalScoring：通过多步累积同一分布
-        h2o_scorer = PositionalScoring(heavy_ratio=0.2, recent_ratio=0.1)
+        pos_scorer = PositionalScoring(heavy_ratio=0.2, recent_ratio=0.1)
         for _step in range(10):
             # 每步加一些噪声到真实分布上
             noisy_pattern = [a * rng.uniform(0.7, 1.3) for a in base_attention]
-            h2o_scorer.update_from_decode_step(noisy_pattern)
+            pos_scorer.update_from_decode_step(noisy_pattern)
 
-        h2o_scores = h2o_scorer.score(token_ids)
+        pos_scores = pos_scorer.score(token_ids)
 
         # 计算 Spearman rank correlation
-        correlation = _spearman_rank_correlation(h2o_scores, attn_scores)
+        correlation = _spearman_rank_correlation(pos_scores, attn_scores)
 
         # 验收标准：Spearman rank correlation >= 0.7
         assert correlation >= 0.7, (
-            f"Spearman rank correlation between H2O and AttentionWeight is {correlation:.4f}, "
-            f"expected >= 0.7"
+            f"Spearman correlation between Positional and AttentionWeight"
+            f" is {correlation:.4f}, expected >= 0.7"
         )
 
-    def test_h2o_better_than_random(self) -> None:
-        """H2O 与 AttentionWeight 的相关性应显著高于 Random。"""
+    def test_positional_better_than_random(self) -> None:
+        """Positional 与 AttentionWeight 的相关性应显著高于 Random。"""
         n = 50
         token_ids = list(range(n))
 
@@ -510,22 +510,22 @@ class TestScoringCorrelation:
         attn_weights = [[list(base_attention)]]
         attn_scores = attn_scorer.score(token_ids, attention_weights=attn_weights)
 
-        # H2O
-        h2o_scorer = PositionalScoring()
+        # Positional
+        pos_scorer = PositionalScoring()
         for _ in range(5):
             noisy = [a * rng.uniform(0.8, 1.2) for a in base_attention]
-            h2o_scorer.update_from_decode_step(noisy)
-        h2o_scores = h2o_scorer.score(token_ids)
+            pos_scorer.update_from_decode_step(noisy)
+        pos_scores = pos_scorer.score(token_ids)
 
         # Random
         random_scorer = RandomScoring(seed=42)
         random_scores = random_scorer.score(token_ids)
 
-        h2o_corr = _spearman_rank_correlation(h2o_scores, attn_scores)
+        pos_corr = _spearman_rank_correlation(pos_scores, attn_scores)
         random_corr = abs(_spearman_rank_correlation(random_scores, attn_scores))
 
-        assert h2o_corr > random_corr, (
-            f"H2O correlation ({h2o_corr:.4f}) should be > Random correlation ({random_corr:.4f})"
+        assert pos_corr > random_corr, (
+            f"Positional corr ({pos_corr:.4f}) should be > Random corr ({random_corr:.4f})"
         )
 
     def test_uniform_has_zero_info(self) -> None:

@@ -370,6 +370,18 @@ def _reorder_running_for_preemption(scheduler: Any, adapter: VLLMAdapter) -> Non
     #   - anti-starvation (0.3×preemptions) prevents cascading evictions
     #   - freed dominates ordering → efficient KV reclamation
     if strategy_name == "bidkv" and len(running) >= 2:
+        # Long-context guard: when avg prompt > 500, LIFO is safer.
+        # LIFO provides natural target rotation (different requests evicted
+        # in turn), preventing the target-fixation problem where quality-
+        # aware reorder continuously targets the same largest request.
+        # Empirically validated: removing this guard or replacing LIFO
+        # with freed-first / keep-score / cached-priority reorder all
+        # produce worse results at rate=0.35 (see v14-v19 experiments).
+        total_prompt = sum(getattr(r, "num_prompt_tokens", 0) for r in running)
+        avg_prompt = total_prompt / len(running)
+        if avg_prompt > 500:
+            return
+
         # Pressure gate: below 95%, LIFO is optimal.
         kv_mgr = getattr(scheduler, "kv_cache_manager", None)
         if kv_mgr is not None:
@@ -384,6 +396,11 @@ def _reorder_running_for_preemption(scheduler: Any, adapter: VLLMAdapter) -> Non
     if cached:
         # Higher priority = more valuable = placed at FRONT (protected)
         # Lower priority = victim = placed at END (preempted by running.pop())
+        #
+        # Default for uncached requests: float("inf") (maximum protection).
+        # New requests entering running between cache refreshes are
+        # shielded until the next select_victims() runs.  BidKV uses a
+        # separate code path above with LIFO guard for long-context.
         scored = []
         for idx, req in enumerate(running):
             rid = getattr(req, "request_id", "")
@@ -478,13 +495,14 @@ def _proactive_preempt(scheduler: Any, adapter: VLLMAdapter) -> None:
     - KV utilization > 90%
     - Waiting queue non-empty (demand for blocks)
     - At least 3 running requests (keep 2+ running)
-    - 5-second cooldown between proactive events (prevent storm)
+    - 5-second cooldown (prevent eviction storm)
     - preempt-evict: skip entirely (it IS the "no intervention" baseline)
     """
     import time
 
     strategy_name = adapter._experiment_strategy_name
     cooldown_s = 5.0
+
     now = time.monotonic()
     last_proactive = getattr(scheduler, "_bidkv_last_proactive", 0.0)
     if now - last_proactive < cooldown_s:

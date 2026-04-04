@@ -83,7 +83,7 @@ def create_sglang_strategy_configs() -> list[SGLangStrategyConfig]:
         SGLangStrategyConfig(
             experiment_name="bidkv",
             baseline_name="bidkv",
-            description="完整 bid pipeline（H2O scoring + bid + solver）",
+            description="完整 bid pipeline（positional scoring + bid + solver）",
         ),
     ]
 

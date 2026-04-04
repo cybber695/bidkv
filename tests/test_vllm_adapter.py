@@ -48,7 +48,8 @@ def inactive_config() -> BidKVConfig:
 
 @pytest.fixture
 def adapter_active(
-    active_config: BidKVConfig, positional_scoring: PositionalScoring,
+    active_config: BidKVConfig,
+    positional_scoring: PositionalScoring,
 ) -> VLLMAdapter:
     """启用状态的 VLLMAdapter（无 scheduler）。"""
     return VLLMAdapter(
@@ -61,7 +62,8 @@ def adapter_active(
 
 @pytest.fixture
 def adapter_inactive(
-    inactive_config: BidKVConfig, positional_scoring: PositionalScoring,
+    inactive_config: BidKVConfig,
+    positional_scoring: PositionalScoring,
 ) -> VLLMAdapter:
     """未启用状态的 VLLMAdapter。"""
     return VLLMAdapter(config=inactive_config, scoring=positional_scoring)
@@ -314,15 +316,15 @@ class TestAdapterMetrics:
 
 
 # ---------------------------------------------------------------------------
-# Test: h2o_hook module
+# Test: positional_hook module
 # ---------------------------------------------------------------------------
 
 
-class TestH2OHook:
-    """h2o_hook 模块的 _generate_attention_proxy 测试。"""
+class TestPositionalHook:
+    """positional_hook 模块的 _generate_attention_proxy 测试。"""
 
     def test_generate_attention_proxy_basic(self) -> None:
-        from bidkv.adapters.vllm.h2o_hook import _generate_attention_proxy
+        from bidkv.adapters.vllm.positional_hook import _generate_attention_proxy
 
         proxy = _generate_attention_proxy(10)
         assert len(proxy) == 10
@@ -330,13 +332,13 @@ class TestH2OHook:
         assert all(v > 0 for v in proxy)
 
     def test_generate_attention_proxy_empty(self) -> None:
-        from bidkv.adapters.vllm.h2o_hook import _generate_attention_proxy
+        from bidkv.adapters.vllm.positional_hook import _generate_attention_proxy
 
         proxy = _generate_attention_proxy(0)
         assert proxy == []
 
     def test_generate_attention_proxy_single(self) -> None:
-        from bidkv.adapters.vllm.h2o_hook import _generate_attention_proxy
+        from bidkv.adapters.vllm.positional_hook import _generate_attention_proxy
 
         proxy = _generate_attention_proxy(1)
         assert len(proxy) == 1
@@ -344,7 +346,7 @@ class TestH2OHook:
 
     def test_attention_sink_property(self) -> None:
         """验证 position 0 (attention sink) 有较高权重。"""
-        from bidkv.adapters.vllm.h2o_hook import _generate_attention_proxy
+        from bidkv.adapters.vllm.positional_hook import _generate_attention_proxy
 
         proxy = _generate_attention_proxy(100)
         # Position 0 应比中间位置权重高
@@ -641,7 +643,8 @@ class TestCompressionExecution:
 class TestTruncationRouting:
     """Tail truncation 路由测试。"""
 
-    def test_truncation_routes_to_block_truncation(self,
+    def test_truncation_routes_to_block_truncation(
+        self,
         positional_scoring: PositionalScoring,
     ) -> None:
         """execute_compression 路由到 _execute_tail_truncation (block truncation)."""
@@ -662,7 +665,8 @@ class TestTruncationRouting:
         # num_computed_tokens updated to new boundary
         assert req.num_computed_tokens == 48  # 3 remaining blocks × 16
 
-    def test_kill_switch_config_stable(self,
+    def test_kill_switch_config_stable(
+        self,
         positional_scoring: PositionalScoring,
     ) -> None:
         """kill switch 激活/解除不破坏 config。"""
@@ -789,7 +793,8 @@ class TestTailTruncation:
         config = BidKVConfig(enabled=True, kill_switch=False)
         return VLLMAdapter(config=config, scoring=positional_scoring, scheduler=scheduler)
 
-    def test_basic_truncation_with_support(self,
+    def test_basic_truncation_with_support(
+        self,
         positional_scoring: PositionalScoring,
     ) -> None:
         """Block-level truncation frees blocks, tracks metrics."""
@@ -808,7 +813,8 @@ class TestTailTruncation:
         assert adapter.metrics.total_evictions == 1
         assert adapter.metrics.total_tokens_freed == 32
 
-    def test_block_truncation_frees_tail_blocks(self,
+    def test_block_truncation_frees_tail_blocks(
+        self,
         positional_scoring: PositionalScoring,
     ) -> None:
         """Tail blocks freed, request stays running."""
@@ -827,7 +833,8 @@ class TestTailTruncation:
         assert req.num_computed_tokens == 48  # 3 remaining blocks × 16
         assert scheduler.preempted_requests == []  # NOT preempted
 
-    def test_truncation_capped_at_available_blocks(self,
+    def test_truncation_capped_at_available_blocks(
+        self,
         positional_scoring: PositionalScoring,
     ) -> None:
         """target_tokens > total → frees max blocks (keeps at least 1)."""
@@ -846,7 +853,8 @@ class TestTailTruncation:
         assert req.num_computed_tokens == 16  # 1 remaining block × 16
         assert scheduler.preempted_requests == []  # NOT preempted
 
-    def test_no_truncation_support_returns_zero(self,
+    def test_no_truncation_support_returns_zero(
+        self,
         positional_scoring: PositionalScoring,
     ) -> None:
         """No truncation_support installed → returns 0."""
@@ -864,7 +872,8 @@ class TestTailTruncation:
         assert freed == 0
         assert scheduler.preempted_requests == []
 
-    def test_tracked_tokens_truncated_after_compression(self,
+    def test_tracked_tokens_truncated_after_compression(
+        self,
         positional_scoring: PositionalScoring,
     ) -> None:
         """After truncation, tracked tokens shortened to new boundary."""
@@ -884,7 +893,8 @@ class TestTailTruncation:
         tracked = adapter._request_tokens["req-1"]
         assert len(tracked) == 48
 
-    def test_truncation_no_scheduler_returns_zero(self,
+    def test_truncation_no_scheduler_returns_zero(
+        self,
         positional_scoring: PositionalScoring,
     ) -> None:
         """scheduler=None 时返回 0。"""
@@ -895,7 +905,8 @@ class TestTailTruncation:
         freed = adapter.execute_compression("req-1", 20)
         assert freed == 0
 
-    def test_plain_scheduler_no_kv_returns_zero(self,
+    def test_plain_scheduler_no_kv_returns_zero(
+        self,
         positional_scoring: PositionalScoring,
     ) -> None:
         """Plain scheduler without kv_cache_manager returns 0."""
@@ -907,7 +918,8 @@ class TestTailTruncation:
         freed = adapter.execute_compression("req-1", 20)
         assert freed == 0
 
-    def test_partial_block_truncation(self,
+    def test_partial_block_truncation(
+        self,
         positional_scoring: PositionalScoring,
     ) -> None:
         """Truncate fewer tokens than output — rounds up to block boundary."""

@@ -150,7 +150,7 @@ class AttentionWeightScoring:
         if self._latest_scores and len(self._latest_scores) >= n:
             return list(self._latest_scores[:n])
 
-        # 无注意力数据时，返回均匀分数（不做位置启发式，与 H2O 区分）
+        # 无注意力数据时，返回均匀分数（不做位置启发式，与 Positional 区分）
         return [0.5] * n
 
     def generate_bids(

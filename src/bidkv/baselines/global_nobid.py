@@ -14,7 +14,7 @@ bid 接口（用户显式偏好）的增量价值。
 - 评分策略、compression_levels、delta_budget、贪心算法完全相同
 
 选择公式：
-- U_sys = r / (δ_H2O + ε)，其中 δ_H2O 由 PositionalScoring 估算
+- U_sys = r / (δ_pos + ε)，其中 δ_pos 由 PositionalScoring 估算
 - 多级 compression levels：与 BidKV 相同 (0.2, 0.4, 0.6)
 - All options 混合按 U_sys 贪心选择，每 request 最多选 1 级
 """
@@ -34,7 +34,7 @@ class GlobalNoBidStrategy(BaselineStrategy):
     流程：
     1. 对每个候选请求，用 PositionalScoring 评分
     2. 对每个 compression_level 估算 (tokens_freed, quality_delta)
-    3. 计算系统推断 utility：U_sys = tokens_freed / (δ_H2O + ε)
+    3. 计算系统推断 utility：U_sys = tokens_freed / (δ_pos + ε)
     4. 将所有 (request, level) options 混合，按 U_sys 降序贪心选择
     5. 每个 request 最多选取 1 个 level（约束 A）
     6. Σδ ≤ delta_budget（约束 B）
@@ -179,7 +179,7 @@ class GlobalNoBidStrategy(BaselineStrategy):
     def _estimate_delta(
         self, scores: list[float], tokens_to_compress: int, total_tokens: int
     ) -> float:
-        """根据 H2O scoring 估算压缩的 quality delta。
+        """根据 Positional scoring 估算压缩的 quality delta。
 
         被压缩的 token 是重要度最低的。delta 等于被压缩 token 的平均重要度。
         """

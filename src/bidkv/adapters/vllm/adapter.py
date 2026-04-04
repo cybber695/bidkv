@@ -894,13 +894,13 @@ class VLLMAdapter(FrameworkAdapter):
         logger.info("VLLMAdapter: kill switch deactivated, BidKV resumed")
 
     # ------------------------------------------------------------------
-    # H2O decode step callback
+    # Positional scoring decode step callback
     # ------------------------------------------------------------------
 
     def on_decode_step(self, request_id: str, attention_pattern: Sequence[float]) -> None:
-        """decode step 完成后的回调，更新 H2O scoring。
+        """decode step 完成后的回调，更新 PositionalScoring。
 
-        由 h2o_hook 在每个 decode step 后调用。
+        由 positional_hook 在每个 decode step 后调用。
 
         Parameters
         ----------

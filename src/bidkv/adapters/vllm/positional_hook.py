@@ -1,7 +1,7 @@
-"""H2O Decode Hook — vLLM decode step 后的 H2O scoring 更新回调。
+"""Positional Decode Hook — vLLM decode step 后的 PositionalScoring 更新回调。
 
 在每个 decode step 完成后，从 vLLM 的 model_runner_output 中
-提取注意力信息，更新 PositionalScoring 的累积统计。
+提取位置代理注意力信息，更新 PositionalScoring 的累积统计。
 
 vLLM 的 FlashAttention 不暴露 output_attentions，因此使用代理信号：
 - 生成 token 的 position 作为 attend-to 频率的近似
@@ -23,12 +23,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def update_h2o_from_output(
+def update_positional_from_output(
     adapter: VLLMAdapter,
     scheduler: Any,
     model_runner_output: Any,
 ) -> None:
-    """从 vLLM model_runner_output 更新 H2O scoring。
+    """从 vLLM model_runner_output 更新 PositionalScoring。
 
     由 scheduler_hook 中的 _patched_update_from_output 调用。
 

@@ -59,7 +59,7 @@ class LargestFirstStrategy(BaselineStrategy):
         needed_tokens: int,
         **kwargs: Any,
     ) -> list[CompressionAction]:
-        """使用 H2O scoring 选择低重要度 token 压缩。
+        """使用 PositionalScoring 选择低重要度 token 压缩。
 
         Parameters
         ----------

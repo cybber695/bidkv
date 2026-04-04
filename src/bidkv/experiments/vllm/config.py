@@ -79,7 +79,7 @@ class VLLMServerConfig:
     gpu_memory_utilization:
         GPU 显存利用率上限。
     enforce_eager:
-        是否禁用 CUDA graph（便于 H2O hook 工作）。
+        是否禁用 CUDA graph（便于 positional scoring hook 工作）。
     host:
         服务监听地址。
     port:

@@ -212,7 +212,7 @@ class PositionalScoring:
         compression_levels: Sequence[float],
         **context: Any,
     ) -> list[CompressionBid]:
-        """基于 H2O 评分，针对多个压缩级别生成 CompressionBid。
+        """基于 positional 评分，针对多个压缩级别生成 CompressionBid。
 
         Parameters
         ----------

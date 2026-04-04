@@ -44,7 +44,7 @@ def inactive_config() -> BidKVConfig:
 
 @pytest.fixture()
 def positional_scoring() -> PositionalScoring:
-    """H2O 评分策略。"""
+    """Positional 评分策略。"""
     return PositionalScoring(heavy_ratio=0.2, recent_ratio=0.2)
 
 
@@ -207,7 +207,7 @@ class TestSharedPrefixProtection:
         shared = {0, 1, 2, 3, 4}  # 前 5 个 token 共享
         active_adapter.track_request("req-1", token_ids, shared_positions=shared)
 
-        # 更新 H2O scoring（给所有 token 评分）
+        # 更新 Positional scoring（给所有 token 评分）
         attention = [0.1] * 20
         active_adapter.scoring.update_from_decode_step(attention)
 
@@ -420,12 +420,12 @@ class TestSchedulerHook:
 
 
 # ===========================================================================
-# Test: H2O Decode Step 回调
+# Test: Positional Decode Step 回调
 # ===========================================================================
 
 
-class TestH2ODecodeCallback:
-    """H2O decode step 回调。"""
+class TestPositionalDecodeCallback:
+    """Positional scoring decode step 回调。"""
 
     def test_on_decode_step_updates_scoring(self, active_adapter: SGLangAdapter) -> None:
         """decode step 回调应更新 PositionalScoring 的累积注意力。"""

@@ -51,7 +51,7 @@ def build_bids(
         压缩比例列表（0~1），例如 [0.2, 0.4, 0.6]。
         0.2 表示压缩掉 20% 的 token（保留 80%）。
     algorithm_id:
-        压缩算法标识符（例如 "h2o", "attention_weight", "random"）。
+        压缩算法标识符（例如 "positional", "attention_weight", "random"）。
     confidence_fn:
         可选回调，返回当前置信度 [0, 1]。若为 None，默认 0.5。
     latency_factor:
