@@ -58,7 +58,7 @@ results/vllm_24run_full/
 # Stale intermediate experiment data (pre-v8-frozen)
 # Kept locally for reference; not committed to repo.
 results/vllm_full_v1/
-results/vllm_v8_long_context/
+# results/vllm_v8_long_context/  # now tracked (frozen long-context data)
 # results/vllm_v8_analysis/  # now tracked (frozen analysis output)
 results/vllm_v8_96gate/
 results/vllm_v8_baseline_fresh/

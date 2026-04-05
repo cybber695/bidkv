@@ -52,7 +52,7 @@
       "tpot_p50": 50.61,
       "tpot_p99": 125.64
     },
-    "h2o-style": {
+    "largest-first": {
       "throughput": 2.92,
       "slo_300": 84.36,
       "ttft_p95": 584.15,
@@ -112,14 +112,14 @@
       "slack-aware": 3,
       "bidkv": 4,
       "preempt-evict": 5,
-      "h2o-style": 6,
+      "largest-first": 6,
       "preempt-evict-sjf": 7
     },
     "slo_300": {
       "bidkv": 1,
       "static-random": 2,
       "uniform": 3,
-      "h2o-style": 4,
+      "largest-first": 4,
       "preempt-evict-sjf": 5,
       "slack-aware": 6,
       "preempt-evict": 7
@@ -127,7 +127,7 @@
     "ttft_p95": {
       "bidkv": 1,
       "preempt-evict-sjf": 2,
-      "h2o-style": 3,
+      "largest-first": 3,
       "uniform": 4,
       "static-random": 5,
       "slack-aware": 6,
@@ -139,7 +139,7 @@
       "slack-aware": 3,
       "bidkv": 4,
       "preempt-evict": 5,
-      "h2o-style": 6,
+      "largest-first": 6,
       "preempt-evict-sjf": 7
     }
   },
@@ -193,8 +193,8 @@
         "tpot_p99": 100.83,
         "n_runs": 3
       },
-      "h2o-style": {
-        "strategy": "h2o-style",
+      "largest-first": {
+        "strategy": "largest-first",
         "rate": 2.0,
         "throughput": 1.96,
         "slo_300": 95.53,
@@ -307,8 +307,8 @@
         "tpot_p99": 128.7,
         "n_runs": 3
       },
-      "h2o-style": {
-        "strategy": "h2o-style",
+      "largest-first": {
+        "strategy": "largest-first",
         "rate": 3.8,
         "throughput": 3.28,
         "slo_300": 79.87,
@@ -421,8 +421,8 @@
         "tpot_p99": 147.4,
         "n_runs": 3
       },
-      "h2o-style": {
-        "strategy": "h2o-style",
+      "largest-first": {
+        "strategy": "largest-first",
         "rate": 5.7,
         "throughput": 3.53,
         "slo_300": 77.67,
@@ -493,7 +493,7 @@
         "bidkv": 1,
         "static-random": 2,
         "uniform": 3,
-        "h2o-style": 4,
+        "largest-first": 4,
         "preempt-evict-sjf": 5,
         "slack-aware": 6,
         "preempt-evict": 7
@@ -502,7 +502,7 @@
         "bidkv": 1,
         "uniform": 2,
         "static-random": 3,
-        "h2o-style": 4,
+        "largest-first": 4,
         "preempt-evict-sjf": 5,
         "preempt-evict": 6,
         "slack-aware": 7
@@ -511,7 +511,7 @@
         "bidkv": 1,
         "uniform": 2,
         "static-random": 3,
-        "h2o-style": 4,
+        "largest-first": 4,
         "preempt-evict-sjf": 5,
         "preempt-evict": 6,
         "slack-aware": 7
@@ -520,7 +520,7 @@
         "bidkv": 1,
         "static-random": 2,
         "uniform": 3,
-        "h2o-style": 4,
+        "largest-first": 4,
         "preempt-evict": 5,
         "slack-aware": 6,
         "preempt-evict-sjf": 7
@@ -533,14 +533,14 @@
         "preempt-evict": 3,
         "slack-aware": 4,
         "bidkv": 5,
-        "h2o-style": 6,
+        "largest-first": 6,
         "preempt-evict-sjf": 7
       },
       "slo_300": {
         "static-random": 1,
         "bidkv": 2,
         "uniform": 3,
-        "h2o-style": 4,
+        "largest-first": 4,
         "preempt-evict-sjf": 5,
         "preempt-evict": 6,
         "slack-aware": 7
@@ -548,7 +548,7 @@
       "ttft_p95": {
         "bidkv": 1,
         "preempt-evict-sjf": 2,
-        "h2o-style": 3,
+        "largest-first": 3,
         "uniform": 4,
         "static-random": 5,
         "slack-aware": 6,
@@ -560,7 +560,7 @@
         "slack-aware": 3,
         "preempt-evict": 4,
         "bidkv": 5,
-        "h2o-style": 6,
+        "largest-first": 6,
         "preempt-evict-sjf": 7
       }
     },
@@ -570,7 +570,7 @@
         "static-random": 2,
         "slack-aware": 3,
         "bidkv": 4,
-        "h2o-style": 5,
+        "largest-first": 5,
         "preempt-evict": 6,
         "preempt-evict-sjf": 7
       },
@@ -578,7 +578,7 @@
         "uniform": 1,
         "bidkv": 2,
         "static-random": 3,
-        "h2o-style": 4,
+        "largest-first": 4,
         "preempt-evict-sjf": 5,
         "slack-aware": 6,
         "preempt-evict": 7
@@ -586,7 +586,7 @@
       "ttft_p95": {
         "preempt-evict-sjf": 1,
         "bidkv": 2,
-        "h2o-style": 3,
+        "largest-first": 3,
         "uniform": 4,
         "static-random": 5,
         "slack-aware": 6,
@@ -597,7 +597,7 @@
         "uniform": 2,
         "slack-aware": 3,
         "bidkv": 4,
-        "h2o-style": 5,
+        "largest-first": 5,
         "preempt-evict": 6,
         "preempt-evict-sjf": 7
       }
@@ -1117,8 +1117,8 @@
       "successful_requests": 1000,
       "failed_requests": 0
     },
-    "h2o-style__rate2.0__r0": {
-      "strategy": "h2o-style",
+    "largest-first__rate2.0__r0": {
+      "strategy": "largest-first",
       "rate": 2.0,
       "run": 0,
       "throughput": 1.9605,
@@ -1136,8 +1136,8 @@
       "successful_requests": 1000,
       "failed_requests": 0
     },
-    "h2o-style__rate2.0__r1": {
-      "strategy": "h2o-style",
+    "largest-first__rate2.0__r1": {
+      "strategy": "largest-first",
       "rate": 2.0,
       "run": 1,
       "throughput": 1.9604,
@@ -1155,8 +1155,8 @@
       "successful_requests": 1000,
       "failed_requests": 0
     },
-    "h2o-style__rate2.0__r2": {
-      "strategy": "h2o-style",
+    "largest-first__rate2.0__r2": {
+      "strategy": "largest-first",
       "rate": 2.0,
       "run": 2,
       "throughput": 1.9605,
@@ -1174,8 +1174,8 @@
       "successful_requests": 1000,
       "failed_requests": 0
     },
-    "h2o-style__rate3.8__r0": {
-      "strategy": "h2o-style",
+    "largest-first__rate3.8__r0": {
+      "strategy": "largest-first",
       "rate": 3.8,
       "run": 0,
       "throughput": 3.2225,
@@ -1193,8 +1193,8 @@
       "successful_requests": 1000,
       "failed_requests": 0
     },
-    "h2o-style__rate3.8__r1": {
-      "strategy": "h2o-style",
+    "largest-first__rate3.8__r1": {
+      "strategy": "largest-first",
       "rate": 3.8,
       "run": 1,
       "throughput": 3.373,
@@ -1212,8 +1212,8 @@
       "successful_requests": 1000,
       "failed_requests": 0
     },
-    "h2o-style__rate3.8__r2": {
-      "strategy": "h2o-style",
+    "largest-first__rate3.8__r2": {
+      "strategy": "largest-first",
       "rate": 3.8,
       "run": 2,
       "throughput": 3.2298,
@@ -1231,8 +1231,8 @@
       "successful_requests": 1000,
       "failed_requests": 0
     },
-    "h2o-style__rate5.7__r0": {
-      "strategy": "h2o-style",
+    "largest-first__rate5.7__r0": {
+      "strategy": "largest-first",
       "rate": 5.7,
       "run": 0,
       "throughput": 3.5168,
@@ -1250,8 +1250,8 @@
       "successful_requests": 1000,
       "failed_requests": 0
     },
-    "h2o-style__rate5.7__r1": {
-      "strategy": "h2o-style",
+    "largest-first__rate5.7__r1": {
+      "strategy": "largest-first",
       "rate": 5.7,
       "run": 1,
       "throughput": 3.4867,
@@ -1269,8 +1269,8 @@
       "successful_requests": 1000,
       "failed_requests": 0
     },
-    "h2o-style__rate5.7__r2": {
-      "strategy": "h2o-style",
+    "largest-first__rate5.7__r2": {
+      "strategy": "largest-first",
       "rate": 5.7,
       "run": 2,
       "throughput": 3.5908,
