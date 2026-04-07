@@ -4,10 +4,11 @@
 scorer-agnostic：支持任意实现 ScoringStrategy 的评分器，
 默认使用 PositionalScoring。
 
-选择公式：U = output_tokens / (δ + ε)，greedy by U（Algorithm 1）。
+选择公式：U = current_tokens / (δ + ε)，greedy by U（Algorithm 1）。
 
 Mode A 语义（request-level preemption）
 --------------------------------------
+SGLANG:
 δ = recompute_norm + late_penalty + starvation
 
 - tokens_freed = output_tokens（decode 阶段 KV）
@@ -24,6 +25,18 @@ Mode A 语义（request-level preemption）
 
 Fallback（num_computed_tokens 不可用时）：
   回退到简化公式 U = current_tokens / (1 + starvation)。
+VLLM：
+δ = 1 + 0.5·completion + 0.3·num_preemptions（v8-frozen formula）
+
+- tokens_freed = current_tokens（prompt + output 全部 KV，vLLM recompute-from-scratch）
+- completion = output_tokens / max_output_tokens，衡量已完成比例
+  接近完成的请求 δ 增大 → U 降低 → 避免临近结束的请求被驱逐
+- anti-starvation = num_preemptions × 0.3
+  被多次 preempt 的请求 δ 递增，防止 cascading 连续驱逐同一请求
+- δ ∈ [1.0, 1.8]（completion 0→1，starvation=1 时），freed 强主导排序
+
+注意：vLLM Mode A 采用 recompute-from-scratch，因此 current_tokens（整个 KV
+footprint）是实际释放量；无 prefix cache 共享，prompt KV 也会被释放。
 """
 
 from __future__ import annotations
@@ -53,8 +66,8 @@ _DELTA_MODE = os.environ.get("BIDKV_DELTA_MODE", "default")
 class BidKVStrategy(BaselineStrategy):
     """BidKV 完整策略：scoring → bid → pool → solver。
 
-    Mode A 使用 U = freed / (1 + 0.5·completion + starvation + ε) 排序，
-    freed 强主导、completion 提供 ≤1.5× 轻量保护。
+    Mode A 使用 U = current_tokens / (1 + 0.5·completion + 0.3·P + ε) 排序，
+    freed 强主导、completion 提供 ≤1.5× 轻量保护，δ ∈ [1.0, 1.8]。
 
     Parameters
     ----------
@@ -125,71 +138,94 @@ class BidKVStrategy(BaselineStrategy):
                 continue
 
             # ----------------------------------------------------------------
-            # Compute output tokens: decode-phase KV only.
-            # Prompt KV may be prefix-cached (SGLang RadixAttention) and
-            # is NOT actually freed when the request is aborted.  Using
-            # output_tokens avoids over-valuing long-prompt requests that
-            # are expensive to re-prefill but free little unique KV.
+            # v8-frozen formula: U = current_tokens / (δ + ε)
+            # δ = 1 + 0.5·completion + 0.3·num_preemptions
+            # δ ∈ [1.0, 1.8] (completion 0→1, 1 prior preemption)
+            #
+            # vLLM Mode A uses recompute-from-scratch → current_tokens (ALL KV)
+            # is the true freed amount.  freed strongly dominates ordering;
+            # completion provides mild near-done protection (max 1.5×);
+            # anti-starvation (+0.3 per prior preemption) prevents cascading.
             # ----------------------------------------------------------------
-            output_tokens = max(0, req.num_computed_tokens - req.num_prompt_tokens)
+# SGLANG
+#             output_tokens = max(0, req.num_computed_tokens - req.num_prompt_tokens)
 
-            if output_tokens > 2:
-                # ----------------------------------------------------------
-                # Primary path: recompute-cost-aware formula
-                # ----------------------------------------------------------
-                tokens_freed = output_tokens
+#             if output_tokens > 2:
+#                 # ----------------------------------------------------------
+#                 # Primary path: recompute-cost-aware formula
+#                 # ----------------------------------------------------------
+#                 tokens_freed = output_tokens
 
-                if _DELTA_MODE == "freed-only":
-                    # Ablation: δ = 1.0 constant → U = freed / (1 + ε)
-                    quality_delta = 1.0
-                    recompute_norm = 1.0
-                    completion = 0.0
-                    late_penalty = 0.0
-                    starvation_penalty = 0.0
-                else:
-                    # Recompute cost: proportional to prompt length.
-                    if _DELTA_MODE == "no-recompute":
-                        recompute_norm = 1.0
-                    else:
-                        recompute_norm = max(
-                            _RECOMPUTE_FLOOR, req.num_prompt_tokens / _RECOMPUTE_DIV
-                        )
+#                 if _DELTA_MODE == "freed-only":
+#                     # Ablation: δ = 1.0 constant → U = freed / (1 + ε)
+#                     quality_delta = 1.0
+#                     recompute_norm = 1.0
+#                     completion = 0.0
+#                     late_penalty = 0.0
+#                     starvation_penalty = 0.0
+#                 else:
+#                     # Recompute cost: proportional to prompt length.
+#                     if _DELTA_MODE == "no-recompute":
+#                         recompute_norm = 1.0
+#                     else:
+#                         recompute_norm = max(
+#                             _RECOMPUTE_FLOOR, req.num_prompt_tokens / _RECOMPUTE_DIV
+#                         )
 
-                    # Near-completion penalty: protect almost-done requests.
-                    completion = 0.0
-                    if req.max_output_tokens > 0:
-                        completion = min(1.0, output_tokens / req.max_output_tokens)
-                    late_penalty = completion * _COMPLETION_WEIGHT
+#                     # Near-completion penalty: protect almost-done requests.
+#                     completion = 0.0
+#                     if req.max_output_tokens > 0:
+#                         completion = min(1.0, output_tokens / req.max_output_tokens)
+#                     late_penalty = completion * _COMPLETION_WEIGHT
 
-                    # Anti-starvation: previously preempted requests are penalized
-                    starvation_penalty = req.num_preemptions * _STARVATION_WEIGHT
+#                     # Anti-starvation: previously preempted requests are penalized
+#                     starvation_penalty = req.num_preemptions * _STARVATION_WEIGHT
 
-                    quality_delta = max(0.1, recompute_norm + late_penalty + starvation_penalty)
+#                     quality_delta = max(0.1, recompute_norm + late_penalty + starvation_penalty)
 
-                metadata: dict = {
-                    "output_tokens": output_tokens,
-                    "recompute_norm": round(recompute_norm, 4),
-                    "completion": round(completion, 4),
-                    "num_preemptions": req.num_preemptions,
-                    "mode": "A",
-                    "path": "primary",
-                }
-            else:
-                # ----------------------------------------------------------
-                # Fallback: num_computed_tokens unavailable or request
-                # just started decode (output_tokens ≤ 2).
-                # Use simplified formula: U = current_tokens / (1 + starvation).
-                # ----------------------------------------------------------
-                tokens_freed = req.current_tokens
-                quality_delta = max(0.1, 1.0 + req.num_preemptions * 0.5)
+#                 metadata: dict = {
+#                     "output_tokens": output_tokens,
+#                     "recompute_norm": round(recompute_norm, 4),
+#                     "completion": round(completion, 4),
+#                     "num_preemptions": req.num_preemptions,
+#                     "mode": "A",
+#                     "path": "primary",
+#                 }
+#             else:
+#                 # ----------------------------------------------------------
+#                 # Fallback: num_computed_tokens unavailable or request
+#                 # just started decode (output_tokens ≤ 2).
+#                 # Use simplified formula: U = current_tokens / (1 + starvation).
+#                 # ----------------------------------------------------------
+#                 tokens_freed = req.current_tokens
+#                 quality_delta = max(0.1, 1.0 + req.num_preemptions * 0.5)
 
-                metadata = {
-                    "output_tokens": output_tokens,
-                    "completion": 0.0,
-                    "num_preemptions": req.num_preemptions,
-                    "mode": "A",
-                    "path": "fallback",
-                }
+#                 metadata = {
+#                     "output_tokens": output_tokens,
+#                     "completion": 0.0,
+#                     "num_preemptions": req.num_preemptions,
+#                     "mode": "A",
+#                     "path": "fallback",
+#                 }
+            tokens_freed = req.current_tokens
+
+            # Completion ratio: 0 (just started) → 1 (almost done)
+            output_generated = max(0, req.num_computed_tokens - req.num_prompt_tokens)
+            completion = 0.0
+            if req.max_output_tokens > 0:
+                completion = min(1.0, output_generated / req.max_output_tokens)
+
+            quality_delta = 1.0 + 0.5 * completion
+
+            # Anti-starvation: each prior preemption adds 0.3 to δ
+            if req.num_preemptions > 0:
+                quality_delta += req.num_preemptions * 0.3
+
+            metadata: dict = {
+                "completion": round(completion, 4),
+                "num_preemptions": req.num_preemptions,
+                "mode": "A",
+            }
 
             bid = CompressionBid(
                 bid_id=make_bid_id(req.request_id, 0),

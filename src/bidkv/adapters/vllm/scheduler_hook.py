@@ -84,6 +84,25 @@ def install_scheduler_hook(scheduler: Any, adapter: VLLMAdapter) -> None:
     # 保存 adapter 引用
     scheduler._bidkv_adapter = adapter
 
+    # Wrap _preempt_request to count ALL preemptions (native LIFO + proactive + SRPT).
+    # This provides total_all_preemptions / total_all_tokens_freed for Figure 3.
+    orig_preempt = getattr(scheduler, "_preempt_request", None)
+    if orig_preempt is not None:
+        setattr(scheduler, f"{_ORIG_PREFIX}_preempt_request", orig_preempt)
+
+        def _wrapped_preempt_request(  # type: ignore[misc]
+            req: Any,
+            now: float,
+            _orig: Any = orig_preempt,
+            _adapter: Any = adapter,
+        ) -> Any:
+            tokens = getattr(req, "num_computed_tokens", 0)
+            result = _orig(req, now)
+            _adapter._metrics.record_all_preemption(tokens)
+            return result
+
+        scheduler._preempt_request = _wrapped_preempt_request
+
     logger.info("BidKV scheduler hooks installed on vLLM Scheduler")
 
 
@@ -109,6 +128,10 @@ def uninstall_scheduler_hook(scheduler: Any, adapter: VLLMAdapter) -> None:  # n
     orig_free = getattr(scheduler, f"{_ORIG_PREFIX}_free_request", None)
     if orig_free is not None:
         scheduler._free_request = orig_free
+
+    orig_preempt = getattr(scheduler, f"{_ORIG_PREFIX}_preempt_request", None)
+    if orig_preempt is not None:
+        scheduler._preempt_request = orig_preempt
 
     # 清理属性
     for attr in list(vars(scheduler)):
@@ -533,6 +556,13 @@ def _proactive_preempt(scheduler: Any, adapter: VLLMAdapter) -> None:
     if strategy_name in ("preempt-evict", "preempt-evict-sjf"):
         return
 
+    # bidkv: skip proactive preempt — relies on running reorder (KV>95%) +
+    # vLLM native preemption only. v9 experiment confirmed that enabling
+    # proactive preempt for BidKV causes eviction storms (see issue #054).
+    # This guard was accidentally deleted in commit fdd9a3f.
+    if strategy_name == "bidkv":
+        return
+
     # Find victim from cached priority (lowest priority = most expendable)
     cached = getattr(adapter, "_cached_preempt_priority", None)
     if not cached:
@@ -899,14 +929,14 @@ def _patched_update_from_output(
     # on strategies that don't benefit from cumulative attention data).
     # Note: BidKV Mode A uses completion-ratio δ, not H2O token scores.
     # Sampled at 20% (every 5th step) to reduce CPU overhead.
-    _H2O_STRATEGIES = ("largest-first",)
-    if adapter._experiment_strategy_name in _H2O_STRATEGIES:
-        h2o_counter = getattr(scheduler, "_bidkv_h2o_counter", 0) + 1
-        scheduler._bidkv_h2o_counter = h2o_counter
-        if h2o_counter % 5 == 0:
-            from bidkv.adapters.vllm.h2o_hook import update_h2o_from_output
+    _POSITIONAL_STRATEGIES = ("largest-first",)
+    if adapter._experiment_strategy_name in _POSITIONAL_STRATEGIES:
+        positional_counter = getattr(scheduler, "_bidkv_positional_counter", 0) + 1
+        scheduler._bidkv_positional_counter = positional_counter
+        if positional_counter % 5 == 0:
+            from bidkv.adapters.vllm.positional_hook import update_positional_from_output
 
-            update_h2o_from_output(adapter, scheduler, model_runner_output)
+            update_positional_from_output(adapter, scheduler, model_runner_output)
 
     return result
 

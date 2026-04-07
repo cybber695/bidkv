@@ -4,8 +4,10 @@
   (vLLM, Llama-3.1-8B-Instruct, A6000, 500~req/run,
   rate\,=\,0.70\,req/s, SLO threshold 2{,}000\,ms,
   mean of 3~independent runs).
-  At lower rates (0.35 and 0.50\,req/s) all proactive strategies
-  attain SLO\,$>$\,70\%; relative ordering is qualitatively consistent.
+  At lower rates (0.35 and 0.50\,req/s) the KV budget is rarely
+  saturated, preemption events are infrequent, and strategies converge;
+  rate~0.70 is the peak-stress point where saturation is sustained and
+  victim-selection choices have the greatest impact.
   Best in \textbf{bold}; second-best \underline{underlined}.}
 \label{tab:long_context}
 \footnotesize

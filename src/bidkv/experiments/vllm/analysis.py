@@ -63,6 +63,9 @@ class StrategyAggregation:
     total_evictions_mean: float = 0.0
     total_tokens_freed_mean: float = 0.0
     pressure_events_mean: float = 0.0
+    # -- 全量 preemption 指标（含 native LIFO，用于 Figure 3）--
+    total_all_preemptions_mean: float = 0.0
+    total_all_tokens_freed_mean: float = 0.0
 
 
 def compute_ci95(values: list[float]) -> tuple[float, float]:
@@ -147,6 +150,16 @@ def aggregate_results(
         total_evicts = [_get_evictions(r) for r in group]
         total_freed = [float(r.adapter_metrics.get("total_tokens_freed", 0)) for r in group]
         pressure_events = [float(r.adapter_metrics.get("total_pressure_events", 0)) for r in group]
+        # 全量 preemption（含 native LIFO）——新字段，旧数据不存在则回落到 total_evictions
+        total_all_preempts = [
+            float(r.adapter_metrics.get("total_all_preemptions", _get_evictions(r)))
+            for r in group
+        ]
+        total_all_freed = [
+            float(r.adapter_metrics.get("total_all_tokens_freed",
+                                        r.adapter_metrics.get("total_tokens_freed", 0)))
+            for r in group
+        ]
 
         tp_mean, tp_ci = compute_ci95(throughputs)
         p50_ttft_mean, p50_ttft_ci = compute_ci95(p50_ttfts)
@@ -171,6 +184,8 @@ def aggregate_results(
         comp_mean, _ = compute_ci95(total_evicts)
         freed_mean, _ = compute_ci95(total_freed)
         pe_mean, _ = compute_ci95(pressure_events)
+        all_preempts_mean, _ = compute_ci95(total_all_preempts)
+        all_freed_mean, _ = compute_ci95(total_all_freed)
 
         aggregations.append(
             StrategyAggregation(
@@ -200,6 +215,8 @@ def aggregate_results(
                 total_evictions_mean=comp_mean,
                 total_tokens_freed_mean=freed_mean,
                 pressure_events_mean=pe_mean,
+                total_all_preemptions_mean=all_preempts_mean,
+                total_all_tokens_freed_mean=all_freed_mean,
             )
         )
 
@@ -261,6 +278,8 @@ def export_summary_json(
                 "total_evictions": a.total_evictions_mean,
                 "total_tokens_freed": a.total_tokens_freed_mean,
                 "pressure_events": a.pressure_events_mean,
+                "total_all_preemptions": a.total_all_preemptions_mean,
+                "total_all_tokens_freed": a.total_all_tokens_freed_mean,
             }
             for a in aggregations
         ],
@@ -429,47 +448,137 @@ def _plot_eviction_coverage(
     aggregations: list[StrategyAggregation],
     output_dir: Path,
 ) -> list[Path]:
-    """Figure 5: Eviction coverage comparison."""
+    """Figure 3: Reclamation event analysis — eviction count + tokens freed.
+
+    使用 total_all_preemptions_mean（含 native LIFO + proactive + SRPT），
+    回退到 total_evictions_mean（旧数据兼容）。
+    优先绘制 mixed workload rate=3.8 快照；若无 mixed 则回退到 long_context 最高 rate。
+    """
     import matplotlib.pyplot as plt
 
-    # 仅包含有主动驱逐能力的策略（排除 preempt-evict）
-    evict_strategies = [a for a in aggregations if a.strategy != "preempt-evict"]
-    if not evict_strategies:
+    PAPER_STRATEGIES = ["preempt-evict", "preempt-evict-sjf", "static-random",
+                        "largest-first", "bidkv"]
+    STRATEGY_LABELS = {
+        "preempt-evict": "PE",
+        "preempt-evict-sjf": "PE-SJF",
+        "static-random": "Static-Random",
+        "largest-first": "Largest-First",
+        "bidkv": "BidKV",
+    }
+    COLORS = {
+        "preempt-evict":     "#7f7f7f",
+        "preempt-evict-sjf": "#aec7e8",
+        "static-random":     "#ffbb78",
+        "largest-first":     "#98df8a",
+        "bidkv":             "#1f77b4",
+    }
+
+    # 优先取 mixed × rate=3.8；若无则回退到 long_context 最高 rate
+    mixed_data = [a for a in aggregations if a.workload == "mixed"]
+    lc_data = [a for a in aggregations if a.workload == "long_context"]
+
+    if mixed_data:
+        rates = sorted({a.request_rate for a in mixed_data})
+        # 优先选 3.8，否则取最高 rate
+        target_rate = 3.8 if 3.8 in rates else max(rates)
+        rate_data = [a for a in mixed_data if a.request_rate == target_rate]
+        workload_label = "mixed"
+    elif lc_data:
+        rates = sorted({a.request_rate for a in lc_data})
+        target_rate = max(rates)
+        rate_data = [a for a in lc_data if a.request_rate == target_rate]
+        workload_label = "long_context"
+    else:
+        logger.warning("No mixed or long_context data for Figure 3 eviction plot")
+        return []
+
+    # 构建各策略数据
+    evict_counts = []
+    tokens_freed_k = []
+    labels = []
+    colors = []
+
+    for strat in PAPER_STRATEGIES:
+        match = [a for a in rate_data if a.strategy == strat]
+        if match:
+            a = match[0]
+            # 优先用新字段（含 native LIFO），回退旧字段
+            ev = a.total_all_preemptions_mean if a.total_all_preemptions_mean > 0 \
+                else a.total_evictions_mean
+            fr = a.total_all_tokens_freed_mean if a.total_all_tokens_freed_mean > 0 \
+                else a.total_tokens_freed_mean
+        else:
+            ev = 0.0
+            fr = 0.0
+        evict_counts.append(ev)
+        tokens_freed_k.append(fr / 1000.0)
+        labels.append(STRATEGY_LABELS.get(strat, strat))
+        colors.append(COLORS.get(strat, "#888888"))
+
+    if all(v == 0 for v in evict_counts) and all(v == 0 for v in tokens_freed_k):
+        logger.warning("Figure 3: all eviction counts are 0 — data may be from old format")
         return []
 
     paths: list[Path] = []
-    workloads = sorted({a.workload for a in evict_strategies})
+    x_pos = list(range(len(labels)))
+    bar_w = 0.35
 
-    for workload in workloads:
-        fig, ax = plt.subplots(figsize=(10, 6))
-        wl_data = [a for a in evict_strategies if a.workload == workload]
+    # 单图双 Y 轴，每策略两柱（左实心=驱逐次数，右斜线=释放 token）
+    fig, ax1 = plt.subplots(figsize=(10, 5))
+    ax2 = ax1.twinx()
 
-        strategies = sorted({a.strategy for a in wl_data})
-        rates = sorted({a.request_rate for a in wl_data})
+    # Left bars: reclamation count（左 Y 轴，实心）
+    bars1 = ax1.bar(
+        [xi - bar_w / 2 for xi in x_pos], evict_counts, bar_w,
+        color=colors, edgecolor="black", linewidth=0.7,
+        label="Reclamation Count (All Paths)",
+    )
+    # Right bars: tokens freed ×1000（右 Y 轴，斜线纹理 + 半透明）
+    bars2 = ax2.bar(
+        [xi + bar_w / 2 for xi in x_pos], tokens_freed_k, bar_w,
+        color=colors, edgecolor="black", linewidth=0.7,
+        hatch="//", alpha=0.6,
+        label="Tokens Freed (×1000)",
+    )
 
-        bar_width = 0.8 / max(1, len(strategies))
-        x_positions = range(len(rates))
+    ax1.set_xticks(x_pos)
+    ax1.set_xticklabels(labels, rotation=15, ha="right", fontsize=9)
+    ax1.set_xlabel("Strategy", fontsize=10)
+    ax1.set_ylabel("Reclamation Count", fontsize=10)
+    ax2.set_ylabel("Tokens Freed (×1000)", fontsize=10)
+    ax1.yaxis.grid(True, alpha=0.3, linestyle="--")
+    ax1.set_axisbelow(True)
 
-        for i, strategy in enumerate(strategies):
-            coverages = []
-            for rate in rates:
-                match = [a for a in wl_data if a.strategy == strategy and a.request_rate == rate]
-                coverages.append(match[0].eviction_coverage_mean * 100 if match else 0)
-            positions = [x + i * bar_width for x in x_positions]
-            ax.bar(positions, coverages, bar_width, label=strategy)
+    # 数值标签
+    for bar, val in zip(bars1, evict_counts, strict=False):
+        if val > 0:
+            ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max(evict_counts) * 0.01,
+                     f"{val:.0f}", ha="center", va="bottom", fontsize=8)
+    for bar, val in zip(bars2, tokens_freed_k, strict=False):
+        if val > 0:
+            ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max(tokens_freed_k) * 0.01,
+                     f"{val:.0f}k", ha="center", va="bottom", fontsize=8)
 
-        ax.set_xlabel("Request Rate (req/s)")
-        ax.set_ylabel("Eviction Coverage (%)")
-        ax.set_title(f"[Category A] Eviction Coverage — {workload}")
-        ax.set_xticks([x + bar_width * len(strategies) / 2 for x in x_positions])
-        ax.set_xticklabels([str(r) for r in rates])
-        ax.legend(fontsize=8, ncol=2)
-        ax.grid(axis="y", alpha=0.3)
+    # 合并图例（ax1 + ax2 的 handle）
+    h1, l1 = ax1.get_legend_handles_labels()
+    h2, l2 = ax2.get_legend_handles_labels()
+    ax1.legend(h1 + h2, l1 + l2, loc="upper left", fontsize=9)
 
-        path = output_dir / f"fig5_coverage_{workload}.pdf"
-        fig.savefig(path, bbox_inches="tight", dpi=150)
-        plt.close(fig)
-        paths.append(path)
+    fig.tight_layout()
+
+    path = output_dir / f"fig5_compress_coverage_{workload_label}.pdf"
+    fig.savefig(path, bbox_inches="tight", dpi=150)
+    plt.close(fig)
+    paths.append(path)
+    logger.info("Figure 5 saved to %s", path)
+
+    # 同步更新 paper/figures/fig5_compress_coverage.pdf（若目录存在）
+    paper_figures = path.resolve().parent.parent.parent.parent.parent / "paper" / "figures"
+    if paper_figures.is_dir():
+        import shutil
+        paper_dest = paper_figures / "fig5_compress_coverage.pdf"
+        shutil.copy2(str(path), str(paper_dest))
+        logger.info("Copied to paper figures: %s", paper_dest)
 
     return paths
 
