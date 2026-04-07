@@ -15,19 +15,22 @@ import sys
 from pathlib import Path
 
 RESULTS_DIR = Path(__file__).resolve().parent.parent / "results" / "vllm_v8_full_validation"
+FIG3_RESULTS_DIR = Path(__file__).resolve().parent.parent / "results" / "vllm_fig3_mixed_rate38"
+FIG3_RATE57_DIR = Path(__file__).resolve().parent.parent / "results" / "vllm_fig3_mixed_rate57"
 FIG_DIR = Path(__file__).resolve().parent.parent / "paper" / "figures"
 
 STRATEGIES = [
     "preempt-evict",
     "preempt-evict-sjf",
     "static-random",
-    "h2o-style",
+    "largest-first",
     "bidkv",
 ]
 STRATEGY_DISPLAY = {
     "preempt-evict": "PE",
     "preempt-evict-sjf": "PE-SJF",
     "static-random": "Static-Random",
+    "largest-first": "Largest-First",
     "h2o-style": "Largest-First",
     "bidkv": "BidKV",
 }
@@ -38,6 +41,7 @@ COLORS = {
     "preempt-evict": "#7f7f7f",
     "preempt-evict-sjf": "#aec7e8",
     "static-random": "#1f77b4",
+    "largest-first": "#ff7f0e",
     "h2o-style": "#ff7f0e",
     "bidkv": "#d62728",
 }
@@ -45,6 +49,7 @@ MARKERS = {
     "preempt-evict": "s",
     "preempt-evict-sjf": "^",
     "static-random": "v",
+    "largest-first": "D",
     "h2o-style": "D",
     "bidkv": "o",
 }
@@ -86,14 +91,33 @@ def load_run(filepath: Path) -> dict:
 
 
 def load_all() -> dict[tuple[str, float], list[dict]]:
+    """Load all runs, using vllm_fig3_mixed_rate57 data for rate=5.7 (overrides v8)."""
     from collections import defaultdict
     groups: dict[tuple[str, float], list[dict]] = defaultdict(list)
+    # Load v8 baseline for rate=2.0 and 3.8
     for f in sorted(RESULTS_DIR.glob("*.json")):
         if f.name.startswith("candidate"):
             continue
         row = load_run(f)
-        if row["strategy"] in STRATEGIES:
-            groups[(row["strategy"], row["rate"])].append(row)
+        strat = row["strategy"]
+        # map legacy h2o-style to largest-first
+        if strat == "h2o-style":
+            strat = "largest-first"
+            row["strategy"] = "largest-first"
+        if strat in STRATEGIES and row["rate"] != 5.7:
+            groups[(strat, row["rate"])].append(row)
+    # Override rate=5.7 with updated data from vllm_fig3_mixed_rate57
+    if FIG3_RATE57_DIR.is_dir():
+        for f in sorted(FIG3_RATE57_DIR.glob("*.json")):
+            if f.name.startswith("candidate"):
+                continue
+            row = load_run(f)
+            strat = row["strategy"]
+            if strat == "h2o-style":
+                strat = "largest-first"
+                row["strategy"] = "largest-first"
+            if strat in STRATEGIES and row["rate"] == 5.7:
+                groups[(strat, row["rate"])].append(row)
     return groups
 
 
@@ -159,6 +183,53 @@ def generate_fig3(groups: dict) -> None:
     plt.close(fig)
 
 
+def load_fig3_run(filepath: Path) -> dict:
+    """Load a single run from vllm_fig3_mixed_rate38 using all-path fields."""
+    with open(filepath) as f:
+        d = json.load(f)
+    am = d.get("adapter_metrics", {})
+    return {
+        "strategy": d.get("strategy", ""),
+        "rate": d.get("request_rate", 0),
+        "all_preemptions": am.get("total_all_preemptions", 0),
+        "all_tokens_freed": am.get("total_all_tokens_freed", 0),
+    }
+
+
+def load_fig3_all() -> dict[tuple[str, float], list[dict]]:
+    from collections import defaultdict
+    groups: dict[tuple[str, float], list[dict]] = defaultdict(list)
+    for f in sorted(FIG3_RESULTS_DIR.glob("*.json")):
+        if f.name.startswith("candidate"):
+            continue
+        row = load_fig3_run(f)
+        strat = row["strategy"]
+        # map legacy h2o-style to largest-first
+        if strat == "h2o-style":
+            strat = "largest-first"
+            row["strategy"] = "largest-first"
+        if strat in STRATEGIES:
+            groups[(strat, row["rate"])].append(row)
+    return groups
+
+
+def load_fig5_all() -> dict[tuple[str, float], list[dict]]:
+    """Load rate=5.7 reclamation data for fig5 from vllm_fig3_mixed_rate57."""
+    from collections import defaultdict
+    groups: dict[tuple[str, float], list[dict]] = defaultdict(list)
+    for f in sorted(FIG3_RATE57_DIR.glob("*.json")):
+        if f.name.startswith("candidate"):
+            continue
+        row = load_fig3_run(f)
+        strat = row["strategy"]
+        if strat == "h2o-style":
+            strat = "largest-first"
+            row["strategy"] = "largest-first"
+        if strat in STRATEGIES:
+            groups[(strat, row["rate"])].append(row)
+    return groups
+
+
 def generate_fig5(groups: dict) -> None:
     import matplotlib
     matplotlib.use("Agg")
@@ -169,16 +240,17 @@ def generate_fig5(groups: dict) -> None:
         "xtick.labelsize": 9, "ytick.labelsize": 9,
     })
 
+    fig5_groups = load_fig3_all()
     rate = 3.8
     strats_ok, labels, evicts, freed = [], [], [], []
     for strat in STRATEGIES:
-        runs = groups.get((strat, rate), [])
+        runs = fig5_groups.get((strat, rate), [])
         if not runs:
             continue
         strats_ok.append(strat)
         labels.append(STRATEGY_DISPLAY[strat])
-        evicts.append(avg(runs, "evictions"))
-        freed.append(avg(runs, "tokens_freed") / 1000)
+        evicts.append(sum(r["all_preemptions"] for r in runs) / len(runs))
+        freed.append(sum(r["all_tokens_freed"] for r in runs) / len(runs) / 1000)
 
     n = len(strats_ok)
     x = list(range(n))
@@ -190,19 +262,21 @@ def generate_fig5(groups: dict) -> None:
 
     ax1.bar([i - bw / 2 for i in x], evicts, bw,
             color=bar_c, alpha=0.85, edgecolor="black", linewidth=0.5,
-            label="Proactive Evictions")
+            label="Reclamation Count (All Paths)")
     ax2r.bar([i + bw / 2 for i in x], freed, bw,
              color=bar_c, alpha=0.4, edgecolor="black", linewidth=0.5,
              hatch="//", label="Tokens Freed (×1000)")
 
     ax1.set_xlabel("Strategy")
-    ax1.set_ylabel("Proactive Eviction Count")
+    ax1.set_ylabel("Reclamation Count")
     ax2r.set_ylabel("Tokens Freed (×1000)")
     ax1.set_xticks(x)
     ax1.set_xticklabels(labels, rotation=20, ha="right")
 
     me = max(evicts) if evicts and max(evicts) > 0 else 1
     mf = max(freed) if freed and max(freed) > 0 else 1
+    ax1.set_ylim(0, me * 1.18)
+    ax2r.set_ylim(0, mf * 1.18)
     for i, (ev, fr) in enumerate(zip(evicts, freed)):
         if ev > 0:
             ax1.text(i - bw / 2, ev + me * 0.02, f"{ev:.0f}",
@@ -213,10 +287,12 @@ def generate_fig5(groups: dict) -> None:
 
     h1, l1 = ax1.get_legend_handles_labels()
     h2, l2 = ax2r.get_legend_handles_labels()
-    ax1.legend(h1 + h2, l1 + l2, loc="upper left", fontsize=8)
+    ax1.legend(h1 + h2, l1 + l2,
+               loc="lower left", bbox_to_anchor=(0, 1.02),
+               ncol=2, fontsize=8, borderaxespad=0)
     ax1.grid(True, axis="y", alpha=0.2, linestyle="--")
 
-    fig.tight_layout()
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
     save_fig(fig, "fig5_compress_coverage")
     plt.close(fig)
 

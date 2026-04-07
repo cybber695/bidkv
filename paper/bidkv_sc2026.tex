@@ -71,7 +71,7 @@
 % Abstract
 % ============================================================
 \begin{abstract}
-When KV-cache demand exceeds GPU memory capacity during online LLM serving, serving engines reclaim cache from active requests to admit waiting ones. Poor victim selection wastes recomputation, delays admission of queued requests, and degrades first-token latency---a metric directly visible to users. Existing policies rely on coarse request-order heuristics (LIFO, FCFS) or independent per-request scoring rules, lacking both explicit reclamation-cost signals and cross-request coordination. We present BidKV, a utility-guided reclamation policy that improves \emph{admission responsiveness} under KV pressure. Each active request produces a bid encoding recoverable capacity and estimated disruption cost; at each pressure event, an online utility-ranked selection policy identifies the intended highest-utility victim and preempts it via the framework's native mechanism. The current prototype instantiates disruption cost from request-lifecycle proxies (completion progress, prompt length, preemption history) under recompute-fallback semantics. BidKV integrates non-invasively with vLLM and SGLang via a portable adapter layer. Evaluated with Llama-3.1-8B-Instruct on an NVIDIA RTX A6000 under ShareGPT traces, BidKV reduces P95 TTFT by 89\% and improves 300\,ms SLO attainment by 14.9\,pp over vLLM's native policy, trading a modest throughput reduction for substantially better admission responsiveness under KV pressure.
+When KV-cache demand exceeds GPU memory capacity during online LLM serving, serving engines reclaim cache from active requests to admit waiting ones. Poor victim selection wastes recomputation, delays admission of queued requests, and degrades first-token latency---a metric directly visible to users. Existing policies rely on coarse request-order heuristics (LIFO, FCFS) or independent per-request scoring rules, lacking both explicit reclamation-cost signals and cross-request coordination. We present BidKV, a utility-guided reclamation policy that improves \emph{admission responsiveness} under KV pressure. Each active request produces a bid encoding recoverable capacity and estimated disruption cost; at each pressure event, an online utility-ranked selection policy identifies the intended highest-utility victim and preempts it via the framework's native mechanism. The current prototype instantiates disruption cost from request-lifecycle proxies (completion progress, prompt length, preemption history) under recompute-fallback semantics. BidKV integrates non-invasively with vLLM and SGLang via a portable adapter layer. Evaluated with Llama-3.1-8B-Instruct on an NVIDIA RTX A6000 under ShareGPT traces, BidKV reduces P95 TTFT by 90\% and improves 300\,ms SLO attainment by 14.1\,pp over vLLM's native policy, trading a modest throughput reduction for substantially better admission responsiveness under KV pressure.
 \end{abstract}
 
 \maketitle
@@ -480,9 +480,9 @@ The bid generation layer translates per-request state into a structured bid.
 The choice of features that populate $\qualdelta$ is an instantiation decision;
 this paper uses request-lifecycle proxies under recompute-fallback semantics,
 as detailed below.  Each running request contributes one bid with
-$\tokfree$ equal to the request's tracked token count (prompt tokens at
-scheduling time; $\qualdelta$ is computed as
-follows.  The disruption estimate anchors at $1$ and adds two
+$\tokfree$ equal to its current KV footprint (prompt plus tokens generated
+so far, sampled at scheduling time).  $\qualdelta$ is computed as follows.
+The disruption estimate anchors at $1$ and adds two
 request-lifecycle penalty terms:
 \begin{equation}\label{eq:delta}
   \qualdelta \;=\; 1
@@ -501,7 +501,7 @@ discourages repeatedly re-evicting the same already-interrupted request.
 Because $\qualdelta$ functions purely as a \emph{ranking signal}, the
 ranking procedure requires only that the relative ordering be preserved; exact
 magnitudes need not be calibrated to absolute costs
-(Section~\ref{sec:discussion}).
+(empirically validated in Section~\ref{sec:eval:robustness}).
 
 \subsection{Online Utility-Ranked Victim Selection}\label{sec:design:solver}
 
@@ -588,7 +588,7 @@ The adapter intercepts scheduling at three points:
   (c)~\emph{Proactive preemption} (KV${>}90\%$, waiting queue non-empty,
   ${\geq}3$ running, 5\,s cooldown): the lowest-priority running request
   from the cached ordering is preempted via vLLM's native mechanism.
-  PE and PE-SJF skip this step (no-intervention baselines).
+  PE, PE-SJF, and \bidkv skip this step, relying instead on native reclamation triggers.
   (d)~\emph{SRPT preemption} (Static-Random, Largest-First only,
   KV${>}80\%$, 1.5\,s cooldown): a running request whose estimated
   remaining work exceeds 1.2$\times$ the total cost of the cheapest waiting
@@ -687,8 +687,9 @@ We evaluate \bidkv along five dimensions: (1)~overall serving performance
 (Section~\ref{sec:eval:main}), (2)~sensitivity to arrival rate
 (Section~\ref{sec:eval:rate}), (3)~long-context workload
 (Section~\ref{sec:eval:long}), (4)~reclamation event analysis
-(Section~\ref{sec:eval:mechanism}), and (5)~framework portability on SGLang
-(Section~\ref{sec:eval:sglang}).
+(Section~\ref{sec:eval:mechanism}), (5)~framework portability on SGLang
+(Section~\ref{sec:eval:sglang}), and (6)~robustness to hyperparameter variations
+(Section~\ref{sec:eval:robustness}).
 
 \subsection{Experimental Setup}\label{sec:eval:setup}
 
@@ -761,7 +762,8 @@ running-queue reordering, proactive reclamation, and victim selection logic
 \item \textbf{\bidkv}: SJF admission, pressure-gated running reorder
   (KV\,$>$\,95\%), completion-aware cost estimation
   ($\qualdelta$, Eq.~\ref{eq:delta}) $\to$ bids $\to$ utility-ranked
-  victim ordering; proactive reclamation enabled (KV\,$>$\,90\%),
+  victim ordering; proactive reclamation explicitly disabled
+  (relies entirely on utility-ranked native preemption);
   SRPT explicitly disabled.
 \end{enumerate}
 
@@ -861,21 +863,24 @@ its TTFT P95 (1{,}216\,ms) is nearly 2$\times$ that of \bidkv (631\,ms).
 \bidkv achieves the best TTFT P95 and second-best SLO (83.2\%), 0.9\,pp
 below Static-Random but 3.3\,pp above Largest-First and 14.8\,pp above PE.
 PE-SJF achieves 79.6\% SLO without proactive reclamation---above PE
-(68.4\%) but below strategies that actively preempt, confirming that
+(68.4\%) but below strategies with managed cross-request victim selection, confirming that
 admission ordering alone is insufficient for maximum SLO.
 
 \emph{High load (rate\,=\,5.7):}
-All strategies degrade under intense pressure.  \bidkv leads on SLO (81.0\%);
-PE-SJF achieves the lowest TTFT~P95 (727\,ms) through conservative
-scheduling (no proactive preemption), but at lower throughput
-(3.28 vs.\ \bidkv 3.60\,req/s) and lower SLO (74.6\%).
-Static-Random achieves the highest throughput (4.09\,req/s, $+$13.6\% over
-\bidkv) but its TTFT P95 is 2.2$\times$ higher (1{,}792\,ms).
+All strategies degrade under intense pressure.  Static-Random leads on SLO
+(82.0\%); \bidkv achieves the second-best SLO (79.9\%) and second-best
+TTFT~P95 (744\,ms).  PE-SJF achieves the lowest TTFT~P95 (692\,ms) through
+conservative scheduling (no proactive preemption), but at lower throughput
+(3.53 vs.\ \bidkv 3.60\,req/s) and lower SLO (78.1\%).
+Static-Random achieves the highest throughput (4.14\,req/s, $+$15\% over
+\bidkv) but its TTFT~P95 is 2.0$\times$ higher than \bidkv's
+(1{,}499\,ms vs.~744\,ms).
 
 \paragraph{Cross-rate summary.}
-Averaging across all three rates, \bidkv achieves the best SLO (87.1\%) and
-TTFT P95 (562\,ms, 48\% below Static-Random's 1{,}091\,ms) at a throughput
-of 2.99\,req/s---6.8\% below Static-Random's 3.21\,req/s.  This tradeoff
+Averaging across all three rates, \bidkv achieves the best TTFT~P95
+(544\,ms, 45\% below Static-Random's 994\,ms) and second-best SLO (86.7\%,
+0.8\,pp below Static-Random's 87.5\%) at a throughput of
+2.99\,req/s---7.1\% below Static-Random's 3.22\,req/s.  This tradeoff
 reflects \bidkv's design point: ${\sim}$7\% throughput cost in exchange for
 substantially better admission responsiveness under sustained KV pressure.
 
@@ -894,7 +899,7 @@ Among the four active strategies, Largest-First leads on SLO
 (64.4\%)---when all requests are long, evicting the largest frees
 the most capacity, a regime where capacity-greedy selection excels.
 \bidkv achieves the best TTFT~P95 (30{,}143\,ms, 5\,\% better than
-Static-Random, 25\,\% better than PE-SJF), with competitive SLO
+Static-Random, 20\,\% better than PE-SJF), with competitive SLO
 (62.3\%, 2.1\,pp below Largest-First).
 PE-SJF obtains the best TPOT~P95 (145.2\,ms) but the worst TTFT
 (37{,}551\,ms), confirming that admission ordering alone is
@@ -933,21 +938,19 @@ intervention, and directly links victim selection to TTFT outcomes.
 
 \item \textbf{PE-SJF} (336 events, 366k tokens, 1{,}087\,tokens/event) also
   uses only native LIFO reclamation.  SJF admission alters queue composition so
-  that the LIFO victim tends to carry more KV blocks, explaining the higher
-  freed-per-event relative to PE.  PE-SJF's TTFT~P95 (666\,ms) is close to
-  \bidkv's (631\,ms, a 5.5\,\% gap); the primary cost appears in TPOT~P95
-  (153.5\,ms vs.~107.2\,ms, 43\,\% worse) and SLO (79.6\,\% vs.~83.2\,\%).
-  Despite the higher freed-per-event relative to PE, PE-SJF's total tokens
-  freed (366k) is the highest of any strategy---more total recompute work
-  than all others---explaining its worst TPOT~P95 (153.5\,ms) despite
-  competitive TTFT~P95.
+  that the LIFO victim tends to carry more KV blocks, giving higher
+  freed-per-event than PE (1{,}087 vs.~794).  Its total recompute volume
+  (366k tokens, highest across all strategies) drives the worst
+  TPOT~P95 (153.5\,ms) and SLO 3.6\,pp below \bidkv (79.6\,\%
+  vs.~83.2\,\%), as sustained recomputation intermittently delays decode
+  completion.
 
 \item \textbf{Static-Random} (329 events, 88k tokens, 269\,tokens/event) has
   the lowest freed-per-event of all five strategies---5.2$\times$ lower than
   \bidkv's 1{,}398\,tokens/event.  Random victim selection frequently targets
   short requests with small KV footprints; despite issuing 329 events
-  (more than either other proactive strategy: Largest-First 296, \bidkv 181),
-  it frees only 88k tokens in total---34\,\% of \bidkv's 253k.  The KV capacity actually recovered
+  (more than Largest-First's 296 and \bidkv's 181),
+  it frees only 88k tokens in total---35\,\% of \bidkv's 253k.  The KV capacity actually recovered
   per unit of scheduling effort is far lower, a direct consequence of
   ignoring victim heterogeneity.
 
@@ -955,11 +958,11 @@ intervention, and directly links victim selection to TTFT outcomes.
   achieves high freed-per-event by targeting the request with the largest KV
   occupancy.  Approximately 112 of these events are proactive preemptions
   (vs.~zero for \bidkv), and in the mixed workload the largest-KV victims are
-  often near-complete long requests.  Their recomputation consumes
-  disproportionate prefill bandwidth, elevating TPOT~P95 (112.9\,ms) and
-  suppressing SLO (79.9\,\%, 3.3\,pp below \bidkv).  The TTFT~P95 gap is
-  modest (677\,ms vs.~631\,ms, 7\,\%), confirming that the primary cost is
-  recompute overhead rather than reclamation speed.
+  often near-complete long requests.  Preempting and recomputing these targets
+  consumes prefill bandwidth and delays queued arrivals, suppressing SLO
+  (79.9\,\%, 3.3\,pp below \bidkv) and elevating TTFT~P95
+  (677\,ms vs.~\bidkv's 631\,ms, 7\,\% higher), despite comparable
+  TPOT~P95 (112.9\,ms vs.~\bidkv's 107.2\,ms).
 
 \item \textbf{\bidkv} (181 events, 253k tokens, 1{,}398\,tokens/event) fires
   the fewest reclamation events across all five strategies while achieving the
@@ -971,8 +974,9 @@ intervention, and directly links victim selection to TTFT outcomes.
   collectively free 253k tokens---fewer total events than any other strategy,
   meaning fewer recompute cycles and less contention for prefill bandwidth.
   This explains why \bidkv achieves the best TTFT~P95 (631\,ms at
-  rate\,=\,3.8) and second-best SLO (83.2\,\%, 0.9\,pp below Static-Random)
-  despite issuing zero proactive preemptions.
+  rate\,=\,3.8, 5\,\% below PE-SJF's 666\,ms) and second-best SLO
+  (83.2\,\%, 0.9\,pp below Static-Random) despite issuing zero proactive
+  preemptions.
 \end{itemize}
 
 \subsection{Framework Portability}\label{sec:eval:sglang}
@@ -1012,6 +1016,47 @@ The key portability result is the pattern: on both vLLM and SGLang,
 confirming that the scheduling policy and its integration hooks transfer
 across serving frameworks without framework-specific tuning.
 
+\subsection{Robustness to Hyperparameter Variations}
+\label{sec:eval:robustness}
+
+We evaluate the sensitivity of \bidkv to its core configuration parameters: the completion weight ($c_w$), the starvation penalty ($s_w$), and the KV-utilization threshold for gating the running-queue reorder ($Gate$). Table~\ref{tab:sensitivity} presents the serving metrics under the medium-load mixed workload (rate\,=\,3.8\,req/s) across a wide sweep of parameter values.
+
+\textbf{Observation.} Varying these parameters produces only minor fluctuations in overall serving performance. SLO attainment remains highly stable between 82.3\,\% and 84.2\,\%, and TTFT P95 fluctuates modestly between 600\,ms and 659\,ms. Across all tested extreme values (e.g., scaling $c_w$ from 0.25 to 2.0), the performance remains substantially superior to the native LIFO baseline (which achieves 68.4\,\% SLO and 6{,}769\,ms TTFT P95).
+
+\textbf{Analysis.} This robust behavior is a direct, empirical validation of \bidkv's ordinal ranking design (Section~\ref{sec:design:scoring}). Because the utility formula $U = r / (\qualdelta + \epsilon)$ relies on relative prioritization rather than absolute cost thresholds, scaling the disruption penalty weights alters the magnitude of $\qualdelta$ but rarely changes the identity of the top-ranked victim at a pressure event. A newly started request with a large KV footprint will consistently rank as a better eviction candidate than a near-complete request, regardless of whether $c_w$ is set to 0.25 or 2.0.
+
+From a deployment perspective, this parameter insensitivity is highly desirable. It demonstrates that \bidkv acts as a plug-and-play scheduling layer that delivers substantial admission responsiveness gains out-of-the-box, eliminating the need for system operators to perform workload-specific hyperparameter tuning.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Robustness to hyperparameter variations (mixed workload, rate\,=\,3.8). The system exhibits high stability across a wide range of parameter values, confirming the robustness of ordinal utility ranking.}
+\label{tab:sensitivity}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{l c c c c c c c}
+\toprule
+\textbf{Variant} & $c_w$ & $s_w$ & \textbf{Gate} & \textbf{Thru} & \textbf{SLO\,\%} & \textbf{TTFT P95} & \textbf{TPOT P95} \\
+\midrule
+default $\star$ & 0.5 & 0.3 & 0.95 & 3.39 & 82.3 & 633\,ms & 109.6\,ms \\
+\midrule
+cw\_0.25 & 0.25 & 0.3 & 0.95 & 3.34 & 82.8 & 631\,ms & 112.0\,ms \\
+cw\_1.0 & 1.0 & 0.3 & 0.95 & 3.43 & 84.2 & 600\,ms & 100.7\,ms \\
+cw\_2.0 & 2.0 & 0.3 & 0.95 & 3.35 & 83.1 & 659\,ms & 108.2\,ms \\
+\midrule
+sw\_0.1 & 0.5 & 0.1 & 0.95 & 3.40 & 83.5 & 636\,ms & 104.3\,ms \\
+sw\_0.6 & 0.5 & 0.6 & 0.95 & 3.36 & 83.2 & 654\,ms & 105.4\,ms \\
+sw\_1.0 & 0.5 & 1.0 & 0.95 & 3.42 & 83.9 & 640\,ms & 102.4\,ms \\
+\midrule
+gate\_0.85 & 0.5 & 0.3 & 0.85 & 3.46 & 83.7 & 640\,ms & 103.3\,ms \\
+gate\_0.90 & 0.5 & 0.3 & 0.90 & 3.42 & 83.1 & 637\,ms & 102.4\,ms \\
+gate\_0.98 & 0.5 & 0.3 & 0.98 & 3.40 & 83.2 & 621\,ms & 104.4\,ms \\
+\bottomrule
+\end{tabular}%
+}
+\vspace{2pt}
+{\footnotesize $\star$ Default configuration ($c_w{=}0.5$, $s_w{=}0.3$, $Gate{=}0.95$) matching the main experiments (Table~\ref{tab:rate_full}); independently executed sensitivity runs---minor run-to-run variance expected.}
+\end{table}
+
 % ============================================================
 % §7  Discussion and Limitations
 % ============================================================
@@ -1021,7 +1066,7 @@ across serving frameworks without framework-specific tuning.
 
 The disruption estimate~$\qualdelta$ (Eq.~\ref{eq:delta}) is a
 \emph{ranking signal} derived from request-lifecycle features, not a precise
-reclamation-cost oracle.  Exact cost prediction is unnecessary: under
+reclamation-cost oracle.  Exact cost prediction is unnecessary (as confirmed by the robustness evaluation in Section~\ref{sec:eval:robustness}): under
 recompute-fallback semantics the scheduler's task is to \emph{rank} victim
 candidates so that requests whose reclamation is relatively cheap are
 preferred over expensive ones.  The three features---completion progress,
@@ -1081,10 +1126,10 @@ event---a choice that directly shapes how quickly queued requests receive KV
 allocation and, consequently, first-token latency and SLO attainment.
 
 Through a five-strategy evaluation on vLLM with Llama-3.1-8B-Instruct under
-mixed-length ShareGPT workloads, we showed that \bidkv achieves the best
-cross-rate SLO attainment (87.1\%) and TTFT P95 (562\,ms), outperforming
-both capacity-greedy heuristics and default scheduling baselines at a modest
-throughput cost (${\sim}$7\%).  At low load, \bidkv leads on all four metrics.
+mixed-length ShareGPT workloads, we showed that \bidkv achieves the best cross-rate TTFT~P95 (544\,ms) and
+second-best SLO attainment (86.7\%, 0.8\,pp below Static-Random),
+outperforming both capacity-greedy heuristics and default scheduling
+baselines at a modest throughput cost (${\sim}$7\%).  At low load, \bidkv leads on all four metrics.
 At medium and high load, strategies that enable aggressive SRPT preemption
 trade tail latency for throughput; \bidkv provides the best admission
 responsiveness under sustained KV pressure.  A supplementary long-context

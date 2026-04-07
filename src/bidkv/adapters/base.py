@@ -3,9 +3,8 @@
 5 层职责边界：
 1. **KV stats 获取**：``get_kv_stats() → (used, max)``
 2. **Pressure interception**：在框架原生 preemption / eviction **之前**获得压缩尝试机会
-3. **Compression 执行**：``execute_compression()`` 委托框架原生 KV 操作
-4. **Scoring 回调**：decode step 后更新评分策略
-5. **Lifecycle 管理**：``on_request_complete()`` 清理 bid
+3. **Scoring 回调**：decode step 后更新评分策略
+4. **Lifecycle 管理**：``on_request_complete()`` 清理 bid
 """
 
 from __future__ import annotations
@@ -56,23 +55,6 @@ class FrameworkAdapter(ABC):
         """返回 (used_tokens, max_tokens)。
 
         由 PressureDetector 轮询调用。
-        """
-
-    @abstractmethod
-    def execute_compression(self, request_id: str, target_tokens: int) -> int:
-        """在框架中执行 KV 压缩，返回实际释放 token 数。
-
-        Parameters
-        ----------
-        request_id:
-            目标请求 ID。
-        target_tokens:
-            期望释放的 token 数量。
-
-        Returns
-        -------
-        int
-            实际释放的 token 数量（>= 0）。
         """
 
     @abstractmethod

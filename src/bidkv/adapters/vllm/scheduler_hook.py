@@ -27,12 +27,17 @@ from __future__ import annotations
 
 import functools
 import logging
+import os
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from bidkv.adapters.vllm.adapter import VLLMAdapter
 
 logger = logging.getLogger(__name__)
+
+# KV gate threshold for BidKV running-queue reorder — overridable via env var.
+# BIDKV_KV_GATE: below this KV usage ratio, LIFO (vLLM default) is used.
+_KV_GATE: float = float(os.environ.get("BIDKV_KV_GATE", "0.95"))
 
 # 用于存储原始方法的属性名前缀
 _ORIG_PREFIX = "_bidkv_orig_"
@@ -405,13 +410,13 @@ def _reorder_running_for_preemption(scheduler: Any, adapter: VLLMAdapter) -> Non
         if avg_prompt > 500:
             return
 
-        # Pressure gate: below 95%, LIFO is optimal.
+        # Pressure gate: below _KV_GATE, LIFO is optimal.
         kv_mgr = getattr(scheduler, "kv_cache_manager", None)
         if kv_mgr is not None:
             block_pool = getattr(kv_mgr, "block_pool", None)
             if block_pool is not None:
                 usage = block_pool.get_usage()
-                if usage < 0.95:
+                if usage < _KV_GATE:
                     return
 
     # Use strategy-specific cached priority from select_victims()

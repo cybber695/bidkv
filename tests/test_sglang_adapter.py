@@ -444,43 +444,6 @@ class TestPositionalDecodeCallback:
 
 
 # ===========================================================================
-# Test: Radix Hook
-# ===========================================================================
-
-
-class TestRadixHook:
-    """RadixAttention hook 函数测试。"""
-
-    def test_free_kv_positions_no_scheduler(self) -> None:
-        """无 scheduler 时 free_kv_positions 返回 0。"""
-        from bidkv.adapters.sglang.radix_hook import free_kv_positions
-
-        # None scheduler
-        result = free_kv_positions(None, "req-1", [0, 1, 2])
-        assert result == 0
-
-    def test_free_kv_positions_empty_positions(self) -> None:
-        """空位置列表返回 0。"""
-        from bidkv.adapters.sglang.radix_hook import free_kv_positions
-
-        class FakeScheduler:
-            pass
-
-        result = free_kv_positions(FakeScheduler(), "req-1", [])
-        assert result == 0
-
-    def test_get_shared_prefix_positions_no_cache(self) -> None:
-        """无 RadixCache 时返回空集合。"""
-        from bidkv.adapters.sglang.radix_hook import get_shared_prefix_positions
-
-        class FakeScheduler:
-            pass
-
-        result = get_shared_prefix_positions(FakeScheduler(), "req-1", 100)
-        assert result == set()
-
-
-# ===========================================================================
 # Test: Baseline 策略路由
 # ===========================================================================
 

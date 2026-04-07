@@ -47,7 +47,7 @@ class RandomEvictStrategy(BaselineStrategy):
     def select_victims(
         self,
         candidates: list[RequestState],
-        needed_tokens: int,
+        needed_tokens: int,  # noqa: ARG002
         **kwargs: Any,  # noqa: ARG002
     ) -> list[CompressionAction]:
         """随机排列所有候选请求并全部返回。

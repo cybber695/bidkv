@@ -4,7 +4,49 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Added
+### Changed
+
+- **Mode B dead code removal from `adapters/vllm/adapter.py`** (2026-04-09):
+  - 删除 `execute_compression()`, `execute_abort()`, `_execute_tail_truncation()`,
+    `_sync_model_runner_block_table()` — Mode B Token-level truncation 入口，
+    在 Mode A 实验中从未被调用，`truncation_hook.py` 已于上一 session 删除
+  - 删除 `try_compress()`, `_try_compress_baseline()`, `_build_request_states()`,
+    `_execute_baseline_actions()`, `try_compress_for_request()`, `_refresh_bids()`,
+    `_execute_acceptance()` — Mode B 压缩管道，vLLM Mode A 不使用
+  - 删除 `_get_block_size()` — 仅被上述已删除方法调用
+  - 删除 `DEFAULT_COMPRESSION_LEVELS` 常量和 `compression_levels` 构造函数参数
+  - 更新模块 docstring 核心职责（4 层，移除"Compression 执行"）
+  - 删除 `from bidkv.scoring.bid_builder import build_bids` / `CompressionAction` / `BidAcceptance` 等孤立导入
+  - 文件从 936 行缩减至 372 行
+
+- **`adapters/base.py` ABC 更新** (2026-04-09):
+  - 删除 `execute_compression()` 抽象方法（SGLang adapter 的 execute_compression 已非 ABC 要求）
+  - 更新模块 docstring 职责边界（5 层 → 4 层）
+
+- **Mode B 测试清理** (2026-04-09):
+  - `tests/test_vllm_adapter.py`：删除 `TestCompressionExecution`, `TestTruncationRouting`,
+    `TestTailTruncation`, `TestTruncationHook` 测试类（共 ~526 行）；
+    删除 `test_custom_compression_levels`, `test_inactive_adapter_no_compression`,
+    `test_inactive_adapter_no_execute`, `TestBidKVPipeline` 类；
+    更新 `test_kill_switch_stops_all_operations` 移除 Mode B 断言
+  - `tests/test_sglang_adapter.py`：删除 `TestRadixHook` 类（引用已删除的 `radix_hook.py`）
+  - 测试总数：471 → 441（-30）
+
+- **Sensitivity analysis for BidKV v8 formula parameters** (2026-04-07):
+  - `bidkv_strategy.py`：`w_c=0.5` / `w_s=0.3` 硬编码改为读取环境变量
+    `BIDKV_COMPLETION_WEIGHT` / `BIDKV_STARVATION_WEIGHT`（默认值不变）
+  - `scheduler_hook.py`：KV gate `0.95` 改为读取环境变量 `BIDKV_KV_GATE`（默认值不变）
+  - 新增 `scripts/run_sensitivity_v2.sh`：10 variants × 3 runs = 30 runs
+    (completion_weight axis: 0.25/0.5/1.0/2.0; starvation_weight: 0.1/0.3/0.6/1.0; kv_gate: 0.85/0.90/0.95/0.98)
+  - 新增 `scripts/analyze_sensitivity_v2.py`：span 分析 + 鲁棒性分类
+  - 结果（rate=3.8, mixed, 3 runs/variant，保存于 `results/vllm_sensitivity_v2/`）：
+    | Axis | SLO span | TTFT span | Classification |
+    |---|---|---|---|
+    | completion_weight | 1.9pp | 9.2% | ROBUST |
+    | starvation_weight | 1.6pp | 3.2% | ROBUST |
+    | kv_gate | 1.4pp | 3.1% | ROBUST |
+    Overall: SLO span 1.9pp, TTFT P95 span 9.2% → **ROBUST**
+    Default sanity check: TTFT P95=633ms ✓ (expected 550–750ms)
 
 - **BidKV radix-tree-aware victim selection for SGLang** (2026-04-08):
   - `baselines/base.py`: `RequestState` 新增 `private_tokens: int = 0` 字段，
