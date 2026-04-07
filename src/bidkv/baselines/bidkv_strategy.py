@@ -4,26 +4,21 @@
 scorer-agnostic：支持任意实现 ScoringStrategy 的评分器，
 默认使用 PositionalScoring。
 
-选择公式：U = output_tokens / (δ + ε)，greedy by U（Algorithm 1）。
+选择公式：U = current_tokens / (δ + ε)，greedy by U（Algorithm 1）。
 
 Mode A 语义（request-level preemption）
 --------------------------------------
-δ = recompute_norm + late_penalty + starvation
+δ = 1 + 0.5·completion + 0.3·num_preemptions（v8-frozen formula）
 
-- tokens_freed = output_tokens（decode 阶段 KV）
-  prompt KV 在 SGLang RadixAttention 中为 prefix-cached 共享，evict
-  时实际只释放 output 阶段的 KV；用 output_tokens 避免高估长 prompt 请求。
-- recompute_norm = prompt_tokens / 256（prompt 长度归一化）
-  prefill 重算代价正比于 prompt 长度，长 prompt 请求 δ 增大 → U 降低 →
-  BidKV 主动回避高重算代价的驱逐决策。
-- late_penalty = completion² × 2（接近完成的请求获得保护）
-  completion = output_tokens / max_output_tokens；接近完成时 δ 二次增大，
-  保护"很快就能自然释放 KV"的请求不被意外驱逐。
-- starvation = num_preemptions × 0.5（anti-starvation）
-  被多次 preempt 的请求 δ 递增，防止 cascading 连续驱逐同一请求。
+- tokens_freed = current_tokens（prompt + output 全部 KV，vLLM recompute-from-scratch）
+- completion = output_tokens / max_output_tokens，衡量已完成比例
+  接近完成的请求 δ 增大 → U 降低 → 避免临近结束的请求被驱逐
+- anti-starvation = num_preemptions × 0.3
+  被多次 preempt 的请求 δ 递增，防止 cascading 连续驱逐同一请求
+- δ ∈ [1.0, 1.8]（completion 0→1，starvation=1 时），freed 强主导排序
 
-Fallback（num_computed_tokens 不可用时）：
-  回退到简化公式 U = current_tokens / (1 + starvation)。
+注意：vLLM Mode A 采用 recompute-from-scratch，因此 current_tokens（整个 KV
+footprint）是实际释放量；无 prefix cache 共享，prompt KV 也会被释放。
 """
 
 from __future__ import annotations
@@ -40,8 +35,8 @@ from bidkv.solver import GreedyBidSolver, SolverConfig
 class BidKVStrategy(BaselineStrategy):
     """BidKV 完整策略：scoring → bid → pool → solver。
 
-    Mode A 使用 U = freed / (1 + 0.5·completion + starvation + ε) 排序，
-    freed 强主导、completion 提供 ≤1.5× 轻量保护。
+    Mode A 使用 U = current_tokens / (1 + 0.5·completion + 0.3·P + ε) 排序，
+    freed 强主导、completion 提供 ≤1.5× 轻量保护，δ ∈ [1.0, 1.8]。
 
     Parameters
     ----------
@@ -112,62 +107,34 @@ class BidKVStrategy(BaselineStrategy):
                 continue
 
             # ----------------------------------------------------------------
-            # Compute output tokens: decode-phase KV only.
-            # Prompt KV may be prefix-cached (SGLang RadixAttention) and
-            # is NOT actually freed when the request is aborted.  Using
-            # output_tokens avoids over-valuing long-prompt requests that
-            # are expensive to re-prefill but free little unique KV.
+            # v8-frozen formula: U = current_tokens / (δ + ε)
+            # δ = 1 + 0.5·completion + 0.3·num_preemptions
+            # δ ∈ [1.0, 1.8] (completion 0→1, 1 prior preemption)
+            #
+            # vLLM Mode A uses recompute-from-scratch → current_tokens (ALL KV)
+            # is the true freed amount.  freed strongly dominates ordering;
+            # completion provides mild near-done protection (max 1.5×);
+            # anti-starvation (+0.3 per prior preemption) prevents cascading.
             # ----------------------------------------------------------------
-            output_tokens = max(0, req.num_computed_tokens - req.num_prompt_tokens)
+            tokens_freed = req.current_tokens
 
-            if output_tokens > 2:
-                # ----------------------------------------------------------
-                # Primary path: recompute-cost-aware formula
-                # ----------------------------------------------------------
-                tokens_freed = output_tokens
+            # Completion ratio: 0 (just started) → 1 (almost done)
+            output_generated = max(0, req.num_computed_tokens - req.num_prompt_tokens)
+            completion = 0.0
+            if req.max_output_tokens > 0:
+                completion = min(1.0, output_generated / req.max_output_tokens)
 
-                # Recompute cost: proportional to prompt length.
-                # A 512-token prompt costs 2× the re-prefill of a 256-token one.
-                recompute_norm = max(0.5, req.num_prompt_tokens / 256.0)
+            quality_delta = 1.0 + 0.5 * completion
 
-                # Near-completion penalty: protect almost-done requests.
-                # They will free KV naturally very soon; evicting them now
-                # wastes their accumulated decoding work.
-                completion = 0.0
-                if req.max_output_tokens > 0:
-                    completion = min(1.0, output_tokens / req.max_output_tokens)
-                late_penalty = completion * completion * 2.0
+            # Anti-starvation: each prior preemption adds 0.3 to δ
+            if req.num_preemptions > 0:
+                quality_delta += req.num_preemptions * 0.3
 
-                # Anti-starvation: previously preempted requests are penalized
-                # to prevent cascading evictions of the same request.
-                starvation_penalty = req.num_preemptions * 0.5
-
-                quality_delta = max(0.1, recompute_norm + late_penalty + starvation_penalty)
-
-                metadata: dict = {
-                    "output_tokens": output_tokens,
-                    "recompute_norm": round(recompute_norm, 4),
-                    "completion": round(completion, 4),
-                    "num_preemptions": req.num_preemptions,
-                    "mode": "A",
-                    "path": "primary",
-                }
-            else:
-                # ----------------------------------------------------------
-                # Fallback: num_computed_tokens unavailable or request
-                # just started decode (output_tokens ≤ 2).
-                # Use simplified formula: U = current_tokens / (1 + starvation).
-                # ----------------------------------------------------------
-                tokens_freed = req.current_tokens
-                quality_delta = max(0.1, 1.0 + req.num_preemptions * 0.5)
-
-                metadata = {
-                    "output_tokens": output_tokens,
-                    "completion": 0.0,
-                    "num_preemptions": req.num_preemptions,
-                    "mode": "A",
-                    "path": "fallback",
-                }
+            metadata: dict = {
+                "completion": round(completion, 4),
+                "num_preemptions": req.num_preemptions,
+                "mode": "A",
+            }
 
             bid = CompressionBid(
                 bid_id=make_bid_id(req.request_id, 0),

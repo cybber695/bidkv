@@ -920,18 +920,29 @@ class AdapterMetrics(BaseAdapterMetrics):
     """vLLM adapter 运行指标。
 
     继承 ``BaseAdapterMetrics`` 的 6 个跨框架共同字段，
-    额外提供 vLLM 特有的 ``preemptions_avoided``。
+    额外提供 vLLM 特有的 ``preemptions_avoided``，以及
+    ``total_all_preemptions`` / ``total_all_tokens_freed``
+    （记录所有 preemption，含 vLLM native LIFO，用于 Figure 3）。
     """
 
     def __init__(self) -> None:
         super().__init__()
         self.preemptions_avoided: int = 0
+        self.total_all_preemptions: int = 0
+        self.total_all_tokens_freed: int = 0
 
     def record_preemption_avoided(self) -> None:
         self.preemptions_avoided += 1
+
+    def record_all_preemption(self, tokens_freed: int) -> None:
+        """记录所有 preemption（native LIFO + proactive + SRPT），用于 Figure 3。"""
+        self.total_all_preemptions += 1
+        self.total_all_tokens_freed += max(0, tokens_freed)
 
     def as_dict(self) -> dict[str, int]:
         """返回所有指标的字典形式（含 vLLM 特有字段）。"""
         d = super().as_dict()
         d["preemptions_avoided"] = self.preemptions_avoided
+        d["total_all_preemptions"] = self.total_all_preemptions
+        d["total_all_tokens_freed"] = self.total_all_tokens_freed
         return d

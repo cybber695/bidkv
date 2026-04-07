@@ -6,7 +6,25 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- **SGLang v5 native ablation: vanilla_sglang → random_evict → bidkv** (2026-04-04):
+- **Figure 3 eviction analysis: 5-strategy × mixed × rate=3.8 × 3 runs = 15 runs** (2026-04-06):
+  - 新增 `AdapterMetrics.record_all_preemption()`，包装 `scheduler._preempt_request` instance attr
+    捕获所有 preemption（native LIFO + proactive + SRPT），修复旧 Figure 3 所有策略全零 bar 的问题
+  - 新增 `AdapterMetrics.total_all_preemptions`、`total_all_tokens_freed` 字段并在 `as_dict()` 导出
+  - `scheduler_hook.py`：`install_scheduler_hook()` 新增 `_preempt_request` instance wrapper；
+    同时修复 h2o_hook → positional_hook 命名 bug（`_H2O_STRATEGIES` → `_POSITIONAL_STRATEGIES`）
+  - `analysis.py`：`_plot_eviction_coverage()` 优先使用 mixed × rate=3.8 数据（原来仅 long_context）；
+    `StrategyAggregation` 新增 `total_all_preemptions_mean`、`total_all_tokens_freed_mean` 字段
+  - 结果（5 策略均非零，3 runs 均值，mixed rate=3.8）：
+    | Strategy | Preemptions | Tokens Freed |
+    |---|---|---|
+    | preempt-evict | 247 | 196k |
+    | preempt-evict-sjf | 336 | 366k |
+    | static-random | 329 | 88k |
+    | largest-first | 296 | 325k |
+    | BidKV | 323 | 174k |
+  - Figure 3 PDF: `results/vllm_fig3_mixed_rate38/analysis/figures/fig3_eviction_analysis_mixed.pdf`
+  - 471 tests pass
+
   - 新增 `RandomEvictStrategy`（`src/bidkv/baselines/random_evict.py`），实现随机 victim 排序
   - 新增 `STRATEGY_VANILLA_SGLANG`、`STRATEGY_RANDOM_EVICT`、`SGLANG_NATIVE_ABL_STRATEGIES` 到 `config.py`
   - 更新 `EXTENDED_STRATEGIES` + `STRATEGY_BASELINE_MAP` 支持两个新策略

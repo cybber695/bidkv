@@ -478,14 +478,19 @@ class TestBidKV:
             assert "utility" in action.metadata
 
     def test_recompute_cost_aware_ordering(self) -> None:
-        """高 output/prompt 比率（廉价 recompute + 大量真实 KV 释放）的请求优先被驱逐。
+        """freed（current_tokens）强主导：大 KV 占用且 completion 低的请求优先被驱逐。
 
-        req-cheap: prompt=100, output=300 → recompute_norm=0.39, U=300/(0.39+...)=high
-        req-expensive: prompt=450, output=10 → recompute_norm=1.76, U=10/1.76=very low
+        v8-frozen 公式: U = current_tokens / (1 + 0.5*completion + 0.3*P)，δ ∈ [1.0, 1.8]
+
+        req-expensive: current_tokens=500, completion=10/256=0.039
+                       quality_delta=1+0.5*0.039=1.019, U=500/1.019=491
+        req-cheap:     current_tokens=400, completion=300/512=0.586
+                       quality_delta=1+0.5*0.586=1.293, U=400/1.293=309
+        req-expensive has higher U (larger KV footprint, low completion) → evicted first
         """
         candidates = [
             RequestState(
-                "req-expensive-recompute",  # long prompt, tiny output
+                "req-expensive-recompute",  # long prompt, tiny output, big KV
                 current_tokens=500,
                 token_ids=tuple(range(500)),
                 num_prompt_tokens=450,
@@ -493,7 +498,7 @@ class TestBidKV:
                 max_output_tokens=256,
             ),
             RequestState(
-                "req-cheap-recompute",  # short prompt, lots of output
+                "req-cheap-recompute",  # short prompt, lots of output, smaller KV
                 current_tokens=400,
                 token_ids=tuple(range(400)),
                 num_prompt_tokens=100,
@@ -504,12 +509,8 @@ class TestBidKV:
         strategy = BidKVStrategy()
         actions = strategy.select_victims(candidates, needed_tokens=100)
         assert len(actions) >= 1
-        # req-cheap: output=300, recompute_norm=0.39, completion=0.59, late_penalty=0.70
-        #            quality_delta=0.39+0.70=1.09, U=300/1.09=275
-        # req-expensive: output=10, recompute_norm=1.76, late_penalty≈0
-        #            quality_delta=1.76, U=10/1.76=5.7
-        # req-cheap-recompute evicted first (high output_tokens, cheap re-prefill)
-        assert actions[0].request_id == "req-cheap-recompute"
+        # v8 formula: freed (current_tokens) dominates → req-expensive evicted first
+        assert actions[0].request_id == "req-expensive-recompute"
 
     def test_anti_starvation(self) -> None:
         """Previously preempted requests should be protected (higher delta)."""
