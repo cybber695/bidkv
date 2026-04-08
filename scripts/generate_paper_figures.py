@@ -389,7 +389,7 @@ def generate_fig1_panel_b_scatter() -> None:
         "grid.linewidth": 0.4,
     })
 
-    fig, ax = plt.subplots(figsize=(3.35, 3.0))  # single ACM column width
+    fig, ax = plt.subplots(figsize=(4.5, 3.2))  # half ACM textwidth (figure*)
 
     # All candidates as light-grey dots
     ax.scatter(

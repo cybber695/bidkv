@@ -117,19 +117,19 @@ service-level objective~(SLO) attainment.  Active-KV reclamation is therefore a
 cross-request victim-selection problem whose quality directly governs admission
 responsiveness under sustained KV pressure.
 
-\begin{figure}[t]
+\begin{figure*}[t]
 \centering
-\begin{subfigure}[b]{\columnwidth}
-  \includegraphics[width=0.88\columnwidth]{figures/fig1_motivation_1panel.pdf}
+\begin{subfigure}[b]{0.47\textwidth}
+  \includegraphics[width=\linewidth]{figures/fig1_motivation_1panel.pdf}
   \caption{Active requests exhibit extreme heterogeneity in reclamation
     opportunity: $\max R / \min R$ across live victim candidates at each
     KV-pressure event (250 events, mixed ShareGPT, rate\,=\,3.8\,req/s).
     Spread exceeds $10{\times}$ in 99.6\% of events; median is $128{\times}$.}
   \label{fig:intro:hetero}
 \end{subfigure}
-\vspace{2pt}
-\begin{subfigure}[b]{\columnwidth}
-  \includegraphics[width=\columnwidth]{figures/fig1_intro_evidence_panel_b.pdf}
+\hfill
+\begin{subfigure}[b]{0.50\textwidth}
+  \includegraphics[width=\linewidth]{figures/fig1_intro_evidence_panel_b.pdf}
   \caption{Snapshot of a single KV-pressure event under vLLM's native LIFO
     policy (32 concurrent requests).  Each dot is an active candidate;
     the red\,\texttimes{} marks the LIFO victim.  LIFO selects the request
@@ -146,7 +146,7 @@ responsiveness under sustained KV pressure.
   while ignoring optimal candidates, directly causing severe recomputation
   waste and tail-latency degradation.}
 \label{fig:intro_evidence}
-\end{figure}
+\end{figure*}
 
 Because reclamation costs are heterogeneous---as
 Figure~\ref{fig:intro_evidence} concretely demonstrates---the scheduler needs
