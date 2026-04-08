@@ -10,7 +10,6 @@
 % ------------------------------------------------------------
 \usepackage{amsmath}
 % amssymb loaded before newtxmath to avoid \Bbbk clash
-\let\Bbbk\undefined
 \usepackage{amssymb}
 \usepackage{booktabs}
 \usepackage{algorithm}
@@ -282,54 +281,95 @@ re-queues it for full prompt recomputation when rescheduled; the reclamation
 policy does not alter final output tokens.
 
 \paragraph{Empirical evidence.}
+% Figure~\ref{fig:motivation} illustrates the victim-selection gap at a
+% KV-pressure snapshot from a long-context ShareGPT trace (rate=0.5\,req/s;
+% the same effect arises under mixed-length workloads at smaller absolute scale,
+% Section~\ref{sec:eval}).
+% Panel~(a) shows 10 concurrent requests at peak KV utilization,
+% sorted by tokens held.
+% LIFO targets R1 and R2---the requests with the largest KV footprints---yet
+% these requests are 47\% and 34\% complete, with estimated reclamation costs
+% of $\sim$1{,}800 and $\sim$1{,}050~tokens of discarded work respectively
+% (red hatched bars).
+% A utility-guided policy instead selects~R4, which is only~3\% complete: it
+% frees 1{,}825~tokens while incurring a reclamation cost of just~62~tokens---a
+% 29$\times$ improvement in cost efficiency for this single victim choice.
+
+% Panel~(b) aggregates the comparison over a target of freeing 20\% of total KV
+% capacity.
+% LIFO recovers 1.4$\times$ more tokens per event (by preferring larger
+% requests), but at a 5.0$\times$ higher average reclamation cost.
+% Coarse victim selection trades marginal extra KV recovery for a
+% disproportionate cost burden, compounding tail-latency degradation at
+% every subsequent scheduling step.
+
+% \begin{figure}[t]
+% \centering
+% \includegraphics[width=\columnwidth]{figures/fig_preliminary_motivation.pdf}
+% \caption{Empirical motivation (long-context trace, ShareGPT, rate=0.5\,req/s).
+%   \textbf{(a)}~Per-request KV footprint (blue) and estimated reclamation cost
+%   (red hatched) at a KV-pressure snapshot; 10 concurrent requests sorted by
+%   KV tokens held, high$\to$low.
+%   LIFO targets R1--R2 (34--47\% complete); utility-guided selects R4
+%   (3\% complete, $29\times$ lower reclamation cost).
+%   \textbf{(b)}~Aggregate comparison freeing 20\% of total KV capacity:
+%   LIFO imposes 5.0$\times$ higher average reclamation cost per event
+%   relative to utility-guided selection.}
+% \label{fig:motivation}
+% \end{figure}
 The practical question behind Eq.~\ref{eq:victim} is whether the active
 requests present at a real KV-pressure event are actually heterogeneous enough
-for victim selection to matter.  Figure~\ref{fig:motivation} answers yes.
+for victim selection to matter. Figure~\ref{fig:motivation} answers yes.
 Across 250 KV-pressure events collected from a mixed-length ShareGPT run
-(rate~=~3.8\,req/s), we examine the spread of a \emph{reclamation opportunity
-score} $R_i = B_i \cdot (1 - p_i)$, where $B_i$ is the KV tokens currently
-held by candidate~$i$ (freed in full upon preemption under recompute-fallback
-semantics), and $p_i = g_i / G_i$ is the completion fraction ($g_i$~output
-tokens generated so far, $G_i$~actual final output length recorded from the
-same experiment run).  $R$ is \emph{analysis-only} and
-\emph{method-agnostic}---it references no scheduling formula and captures the
-natural intuition that a good eviction target should both free substantial KV
-space \emph{and} have invested little decode work.
+(rate~=~3.8\,req/s), we examine the spread of an \emph{analysis-only
+reclamation-opportunity score}
+\begin{equation}
+R_i = B_i \cdot (1 - p_i)
+\label{eq:reclamation_opportunity}
+\end{equation}
+where $B_i$ is the number of KV tokens currently held by candidate~$i$
+(and therefore freed in full upon preemption under recompute-fallback
+semantics), and $p_i = g_i / G_i$ is a post-hoc completion fraction, with
+$g_i$ denoting the output tokens generated so far and $G_i$ the realized final
+output length from the same run. This score is \emph{analysis-only} and
+\emph{method-agnostic}: it references no scheduling formula and simply captures
+the intuition that a favorable eviction target should both free substantial KV
+space and have invested relatively little decode work.
 
-The empirical answer is emphatically heterogeneous.  In 99.6\% of observed
-events, the best and worst candidates differ by at least 10$\times$ in $R$
-($\max R / \min R \geq 10$); the median spread is 128$\times$, and 94.8\% of
-events exceed 20$\times$.  This pervasive heterogeneity arises from the
-interaction of two independent dimensions: KV footprint varies widely across
-requests of different prompt lengths, and completion fraction is spread across
-the $[0, 1]$ interval as requests enter and exit at different lifecycle stages.
-Order-only heuristics that ignore both dimensions---such as LIFO, which selects
-the most recently admitted request---routinely encounter events where the
-chosen victim is far from the reclamation optimum.  The victim-selection
-problem is therefore not merely theoretical; it appears repeatedly in realistic
-traces, and exploiting this heterogeneity requires the two capabilities
-identified above: explicit per-request reclamation-cost signals and
-cross-request coordination.
+The empirical answer is unambiguously yes: reclamation opportunities are highly
+heterogeneous. In 99.6\% of observed events, the highest- and
+lowest-opportunity candidates differ by at least 10$\times$ in $R$
+(i.e., $\max R / \min R \geq 10$); the median spread is 128$\times$, and
+94.8\% of events exceed 20$\times$. This pervasive heterogeneity arises from
+the interaction of two independent dimensions: KV footprint varies widely
+across requests of different prompt lengths, and completion fraction is spread
+across the $[0,1]$ interval as requests enter and exit at different lifecycle
+stages. Order-only heuristics that ignore both dimensions---such as LIFO, which
+selects the most recently admitted request---therefore routinely encounter
+events where the chosen victim is far from the highest-opportunity candidate
+under this proxy. The victim-selection problem is therefore not merely
+theoretical; it appears repeatedly in realistic traces, and this heterogeneity
+motivates the two capabilities identified above: explicit per-request
+reclamation-cost signals and cross-request coordination.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{figures/fig_motivation_1panel.pdf}
+\includegraphics[width=0.88\columnwidth]{figures/fig1_motivation_1panel.pdf}
 \caption{Empirical evidence for the victim-selection problem on a real
-  mixed-length ShareGPT run (rate~=~3.8\,req/s).  The figure plots the CDF of
-  per-event reclamation-opportunity spread, measured as $\max R / \min R$
-  across the active victim candidates at each KV-pressure event.
-  $R_i = B_i \cdot (1 - p_i)$, where $B_i$ is KV tokens currently held
-  and $p_i = g_i / G_i$ is the completion fraction ($G_i$~actual final
-  output length from the same run)---an analysis-only, method-agnostic proxy
-  that combines capacity and progress without referencing any scheduling
-  formula.
-  Spread is pervasive: 99.6\% of 250~events exceed 10$\times$, the median
-  is 128$\times$, and 94.8\% exceed 20$\times$.  Real pressure events therefore
-  expose sharply heterogeneous reclamation opportunities, so victim selection
-  cannot be safely reduced to recency or queue order alone.}
+mixed-length ShareGPT run (rate~=~3.8\,req/s). The figure plots the CDF of
+per-event reclamation-opportunity spread, measured as $\max R / \min R$
+across the active victim candidates at each KV-pressure event.
+$R_i = B_i \cdot (1 - p_i)$, where $B_i$ is the number of KV tokens currently
+held and $p_i = g_i / G_i$ is a post-hoc completion fraction
+($G_i$ is the realized final output length from the same run). $R$ is an
+analysis-only, method-agnostic proxy that combines reclaimable capacity and
+progress without referencing any scheduling formula. Spread is pervasive:
+99.6\% of 250 events exceed 10$\times$, the median is 128$\times$, and 94.8\%
+exceed 20$\times$. Real pressure events therefore expose sharply heterogeneous
+reclamation opportunities, so victim selection cannot be safely reduced to
+recency or queue order alone.}
 \label{fig:motivation}
 \end{figure}
-
 
 % ============================================================
 % §3  Related Work
@@ -376,7 +416,7 @@ they expose reclamation-cost information to the scheduler.
 Dominant Resource Fairness~\cite{Ghodsi2011} and multi-resource
 packing~\cite{Grandl2014} formalize allocation for heterogeneous cluster
 resources.
-The knapsack literature~\cite{Martello1990, Kellerer2004} provides algorithmic
+The knapsack literature~\cite{Martello1993, Kellerer2004} provides algorithmic
 foundations for constrained subset selection---the same combinatorial structure
 that underlies the idealized victim-selection formulation (Eq.~\ref{eq:victim}).
 These frameworks assume that item costs are given inputs and that an offline
@@ -555,8 +595,7 @@ statistics and a reclamation hook can implement the adapter.
 \section{Implementation}\label{sec:impl}
 
 \bidkv is implemented as a standalone Python package with \textbf{zero external
-dependencies} (Python $\geq$~3.10 standard library only), totaling
-$\sim$12,000~lines of code.  The system defaults to \textbf{disabled}
+dependencies} (Python $\geq$~3.10 standard library only).  The system defaults to \textbf{disabled}
 and includes a global kill switch for instant bypass in production.
 Strategies are managed through a pluggable registry; adding a new strategy
 requires implementing a single interface and one registration call.
