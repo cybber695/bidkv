@@ -8,8 +8,7 @@
   saturated, preemption events are infrequent, and strategies converge;
   rate~0.70 is the peak-stress point where saturation is sustained and
   victim-selection choices have the greatest impact.
-  Best in \textbf{bold}; second-best \underline{underlined} (among
-  viable strategies; PE$^\dagger$ excluded from ranking).}
+  Best in \textbf{bold}; second-best \underline{underlined}.}
 \label{tab:long_context}
 \footnotesize
 \begin{tabular}{@{}l c c c c@{}}
@@ -18,13 +17,11 @@
   & \textbf{TTFT P95} & \textbf{Throughput} & \textbf{TPOT P95} \\
   & (2000\,ms, \%) & (ms) & (req/s) & (ms) \\
 \midrule
-PE (default)$^\dagger$ &  5.0 & 94696 & 0.413 & 184.1 \\
+PE (default)      &  5.0 & 94696 & 0.413 & 184.1 \\
 PE-SJF            & \underline{63.6} & 37551 & \underline{0.563} & \textbf{145.2} \\
 Static-Random     & 57.4 & \underline{31693} & \textbf{0.568} & 208.3 \\
 Largest-First     & \textbf{64.4} & 33345 & 0.542 & 239.6 \\
 \textbf{BidKV}    & 62.3 & \textbf{30143} & 0.560 & \underline{207.0} \\
 \bottomrule
 \end{tabular}
-\vspace{2pt}
-{\footnotesize $^\dagger$PE collapses under long-context load (SLO\,5.0\%, TTFT\,${\sim}$95\,s); excluded from best/second-best annotation.}
 \end{table}
