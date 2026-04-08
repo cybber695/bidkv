@@ -2,6 +2,7 @@
 """Generate paper figures from vllm_v8_full_validation results.
 
 Produces:
+  - paper/figures/fig1_intro_evidence_panel_b.{pdf,png}  (scatter: LIFO blind selection)
   - paper/figures/fig3_rate_sensitivity.{pdf,png}
   - paper/figures/fig5_compress_coverage.{pdf,png}
 
@@ -297,6 +298,171 @@ def generate_fig5(groups: dict) -> None:
     plt.close(fig)
 
 
+def generate_fig1_panel_b_scatter() -> None:
+    """Generate panel (b) for Figure 1: LIFO blind victim-selection scatter.
+
+    Reads the preempt-evict run at rate=3.8 (run 0) and reconstructs a
+    snapshot at the peak-concurrency moment.  For each request active at that
+    instant the function plots:
+      X = invested decode work (tokens generated so far at snapshot)
+      Y = estimated KV footprint (prompt-proxy + generated tokens)
+
+    The prompt-proxy = min(ttft_ms, 1000) × 0.3 + 50, which caps queueing
+    noise from TTFT while preserving relative prompt-size ordering.
+
+    LIFO victim = request with the highest first_token_time (most recently
+    entered the decode phase), highlighted as a large red ×.
+    The "Ideal Victims" region (top-left: large footprint, low decode work)
+    is annotated with a dashed box.
+
+    Output: paper/figures/fig1_intro_evidence_panel_b.{pdf,png}
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as mpatches
+
+    pe_path = RESULTS_DIR / "preempt-evict__mixed__rate3.8__r0.json"
+    if not pe_path.exists():
+        print(f"  SKIP fig1_panel_b: {pe_path} not found", file=sys.stderr)
+        return
+
+    with open(pe_path) as f:
+        d = json.load(f)
+
+    ok = [
+        r for r in d["request_results"]
+        if not r.get("error")
+        and r.get("first_token_time")
+        and r.get("finish_time")
+        and r["finish_time"] > r["first_token_time"]
+    ]
+
+    t0 = min(r["submit_time"] for r in ok)
+    t1 = max(r["finish_time"] for r in ok)
+
+    # ── Find snapshot with peak decode concurrency (middle 60% of experiment) ──
+    best_t = t0 + (t1 - t0) * 0.5
+    best_n = 0
+    for i in range(300):
+        frac = 0.2 + 0.6 * i / 300
+        t = t0 + (t1 - t0) * frac
+        active = [r for r in ok if r["first_token_time"] <= t <= r["finish_time"]]
+        if len(active) > best_n:
+            best_n = len(active)
+            best_t = t
+
+    snap = [r for r in ok if r["first_token_time"] <= best_t <= r["finish_time"]]
+
+    # ── Compute (X, Y) for each request at the snapshot ──────────────────────
+    xs_all, ys_all = [], []
+    for r in snap:
+        denom = r["finish_time"] - r["first_token_time"]
+        progress = (best_t - r["first_token_time"]) / max(denom, 1e-6)
+        progress = min(max(progress, 0.001), 0.999)
+        gen = r["completion_tokens"] * progress
+        # Prompt proxy: cap TTFT at 1000 ms to strip queuing noise; scale 0.3 tok/ms
+        est_prompt = min(r["ttft_ms"], 1000.0) * 0.3 + 50.0
+        xs_all.append(gen)
+        ys_all.append(est_prompt + gen)
+
+    # ── LIFO victim: most recently started decoding ───────────────────────────
+    lifo_idx = max(range(len(snap)), key=lambda i: snap[i]["first_token_time"])
+    lifo_r = snap[lifo_idx]
+    p_lifo = (best_t - lifo_r["first_token_time"]) / max(
+        lifo_r["finish_time"] - lifo_r["first_token_time"], 1e-6
+    )
+    p_lifo = min(max(p_lifo, 0.001), 0.999)
+    lifo_x = lifo_r["completion_tokens"] * p_lifo
+    lifo_y = min(lifo_r["ttft_ms"], 1000.0) * 0.3 + 50.0 + lifo_x
+
+    # ── Figure ────────────────────────────────────────────────────────────────
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.size": 8,
+        "axes.labelsize": 8,
+        "axes.titlesize": 8.5,
+        "xtick.labelsize": 7,
+        "ytick.labelsize": 7,
+        "legend.fontsize": 6.5,
+        "axes.linewidth": 0.6,
+        "grid.linewidth": 0.4,
+    })
+
+    fig, ax = plt.subplots(figsize=(3.35, 3.0))  # single ACM column width
+
+    # All candidates as light-grey dots
+    ax.scatter(
+        xs_all, ys_all,
+        s=28, color="#b0b0b0", edgecolors="#808080", linewidths=0.4,
+        zorder=3, label="Active candidate",
+    )
+
+    # LIFO victim as large red X
+    ax.scatter(
+        [lifo_x], [lifo_y],
+        marker="X", s=160, color="#d62728", edgecolors="#8b0000", linewidths=0.8,
+        zorder=6, label="LIFO victim",
+    )
+
+    # ── "Ideal Victims" dashed box in the top-left ────────────────────────────
+    x_max = max(xs_all)
+    y_max = max(ys_all)
+    # Box spans ~bottom 30% of X range, top 35% of Y range
+    box_x_right = x_max * 0.28
+    box_y_bottom = y_max * 0.68
+
+    rect = mpatches.FancyBboxPatch(
+        (0, box_y_bottom),
+        box_x_right, y_max * 1.05 - box_y_bottom,
+        boxstyle="square,pad=0",
+        linestyle="--", linewidth=1.0,
+        edgecolor="#1a6e33", facecolor="#e9f8ed", alpha=0.55,
+        zorder=2,
+    )
+    ax.add_patch(rect)
+    ax.text(
+        box_x_right * 0.48, y_max * 1.02,
+        "Ideal Victims\n(large footprint,\nlow decode work)",
+        ha="center", va="top",
+        fontsize=6.0, color="#1a6e33", style="italic",
+        bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="#1a6e33",
+                  alpha=0.85, lw=0.6),
+        zorder=7,
+    )
+
+    # ── Annotation arrow pointing to LIFO victim ─────────────────────────────
+    ann_x = lifo_x + x_max * 0.18
+    ann_y = lifo_y - y_max * 0.12
+    ax.annotate(
+        "LIFO selects here\n(smallest KV free,\nnewest request)",
+        xy=(lifo_x, lifo_y),
+        xytext=(ann_x, ann_y),
+        fontsize=5.5, color="#d62728",
+        arrowprops=dict(arrowstyle="->", color="#d62728", lw=0.8),
+        bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="#d62728",
+                  alpha=0.9, lw=0.6),
+        zorder=8,
+    )
+
+    ax.set_xlabel("Invested Decode Work (tokens generated so far)")
+    ax.set_ylabel("KV Footprint (tokens)")
+    ax.set_title(
+        f"(b) Blind Victim Selection under LIFO\n"
+        f"({len(snap)} concurrent requests at peak KV pressure)",
+        pad=3,
+    )
+    ax.set_xlim(-3, x_max * 1.08)
+    ax.set_ylim(min(ys_all) * 0.90, y_max * 1.12)
+    ax.grid(True, linestyle=":", alpha=0.35)
+    ax.legend(loc="lower right", framealpha=0.85, fontsize=6)
+
+    fig.tight_layout(pad=0.6)
+    save_fig(fig, "fig1_intro_evidence_panel_b")
+    plt.close(fig)
+    print(f"  Snapshot: {len(snap)} concurrent, LIFO victim X={lifo_x:.0f} Y={lifo_y:.0f}")
+
+
 def main() -> None:
     if not RESULTS_DIR.is_dir():
         print(f"ERROR: {RESULTS_DIR} not found", file=sys.stderr)
@@ -322,6 +488,7 @@ def main() -> None:
     print()
     generate_fig3(groups)
     generate_fig5(groups)
+    generate_fig1_panel_b_scatter()
     print("\nDone.")
 
 
