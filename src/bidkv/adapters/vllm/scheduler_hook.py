@@ -13,7 +13,7 @@
      策略选中的 victim（单 victim + 5s cooldown 防 storm）
   3. 重排 running 列表：用缓存优先级影响 vLLM native preemption 的
      victim 选择（running.pop() FCFS）
-- ``update_from_output()``：decode step 后更新 token tracking + H2O。
+- ``update_from_output()``：decode step 后更新 token tracking + positional scoring。
 - ``_free_request()``：请求完成时清理 BidKV 状态。
 
 设计原则：
@@ -48,7 +48,7 @@ def install_scheduler_hook(scheduler: Any, adapter: VLLMAdapter) -> None:
 
     Monkey-patch 三个方法：
     1. ``schedule()`` — preemption 前压缩
-    2. ``update_from_output()`` — decode step 后 H2O 更新
+    2. ``update_from_output()`` — decode step 后 positional scoring 更新
     3. ``_free_request()`` — 请求完成时 cleanup
 
     Parameters
@@ -444,7 +444,7 @@ def _refresh_priority_cache(scheduler: Any, adapter: VLLMAdapter) -> None:
     priority ordering, then caches it for _reorder_running_for_preemption.
 
     Strategy differentiation happens here: BidKV uses bid+quality scoring,
-    h2o uses attention, uniform uses equal weights, etc.
+    largest-first uses positional scoring, uniform uses equal weights, etc.
     """
     import time
 
@@ -771,16 +771,6 @@ def _proactive_srpt(scheduler: Any, adapter: VLLMAdapter) -> None:
     if worst_remaining < best_waiting_cost * 1.2:
         return
 
-    # BidKV-specific: recompute cost-benefit gate for SRPT.
-    # In Mode A, eviction triggers full recompute of the victim's prompt.
-    # SRPT benefit = worst_remaining (output work saved).
-    # Recompute cost = victim_prompt (must redo entire prefill).
-    # Gate: only evict if benefit > cost (remaining > prompt).
-    if strategy_name == "bidkv":
-        victim_prompt = getattr(worst_running, "num_prompt_tokens", 0)
-        if worst_remaining < victim_prompt:
-            return
-
     # Execute preemption via vLLM native mechanism
     preempt_fn = getattr(scheduler, "_preempt_request", None)
     if preempt_fn is None:
@@ -826,7 +816,7 @@ def _patched_schedule(scheduler: Any, adapter: VLLMAdapter) -> Any:
     Strategy differentiation hierarchy:
     - preempt-evict: FCFS admission + LIFO preemption (true vLLM default)
     - slack-aware: EDF admission + SLO-slack preemption
-    - static-random/h2o/uniform/bidkv: SJF(prompt) admission
+    - static-random/largest-first/uniform/bidkv: SJF(prompt) admission
       + strategy-specific select_victims() reorder + SRPT
     - preempt-evict-sjf: SJF(prompt) admission + LIFO preemption (ablation)
     - BidKV's edge: quality-aware U = r / (δ + ε) via completion-ratio δ
@@ -904,7 +894,7 @@ def _patched_update_from_output(
     scheduler_output: Any,
     model_runner_output: Any,
 ) -> Any:
-    """Patched update_from_output() — decode step 后更新 H2O scoring。
+    """Patched update_from_output() — decode step 后更新 positional scoring。
 
     在调用原始 update_from_output 后，遍历 running requests，
     为每个请求更新 token tracking。
@@ -919,10 +909,10 @@ def _patched_update_from_output(
     # 更新追踪信息：将新生成的 token 加入追踪
     _update_token_tracking_from_output(scheduler, adapter, model_runner_output)
 
-    # 更新 H2O scoring 累积注意力统计
-    # Only run for strategies that use H2O scoring (avoids wasting CPU
+    # 更新 positional scoring 累积注意力统计
+    # Only run for strategies that use positional scoring (avoids wasting CPU
     # on strategies that don't benefit from cumulative attention data).
-    # Note: BidKV Mode A uses completion-ratio δ, not H2O token scores.
+    # Note: BidKV Mode A uses completion-ratio δ, not positional token scores.
     # Sampled at 20% (every 5th step) to reduce CPU overhead.
     _POSITIONAL_STRATEGIES = ("largest-first",)
     if adapter._experiment_strategy_name in _POSITIONAL_STRATEGIES:

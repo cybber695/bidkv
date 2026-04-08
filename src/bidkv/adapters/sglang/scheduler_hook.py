@@ -16,16 +16,15 @@
 
 策略分化表（3 策略）：
 
-+-----------------------+---------+------------+---------+----------+
-| 层面                  | sglang  | pe-sjf     | h2o     | bidkv    |
-|                       | default |            | style   |          |
-+=======================+=========+============+=========+==========+
-| Waiting 排序          | FCFS    | SJF(cmp)   | SJF     | SJF      |
-| Running 排序          | LIFO    | LIFO       | cached  | cached   |
-| select_victims        | N/A     | N/A        | attn    | U=r/(δ+ε)|
-| SRPT 主动驱逐         | ❌      | ❌         | ✅      | ✅       |
-| Proactive             | ❌      | ❌         | ✅      | ✅       |
-+-----------------------+---------+------------+---------+----------+
++-----------------------+-----------------+------------+----------+
+| 层面                  | sglang_default  | slack-aware| bidkv    |
++=======================+=================+============+==========+
+| Waiting 排序          | FCFS            | EDF(arrival| SJF      |
+| Running 排序          | no reorder      | cached     | cached   |
+| select_victims        | N/A             | slack-based| U=r/(δ+ε)|
+| SRPT 主动驱逐         | ❌              | ❌          | ✅        |
+| Proactive             | ❌              | ✅          | ✅        |
++-----------------------+-----------------+------------+----------+
 
 设计原则：
 - **纯 Mode A**：策略只做 decision（谁被 preempt），不做 execution
@@ -260,8 +259,12 @@ def _reorder_waiting_for_admission(scheduler: Any, adapter: SGLangAdapter) -> No
     if waiting is None or len(waiting) <= 1:
         return
 
-    if strategy_name in ("sglang_default", "preempt-evict", "vanilla_sglang", "random_evict", "random-evict"):
-        # FCFS — no reorder. vanilla_sglang/random_evict use FCFS to isolate victim selection as the only variable.
+    if strategy_name in (
+        "sglang_default", "preempt-evict", "vanilla_sglang",
+        "random_evict", "random-evict",
+    ):
+        # FCFS — no reorder. vanilla_sglang/random_evict use FCFS to isolate
+        # victim selection as the only variable.
         return
 
     if strategy_name in ("slack_aware", "slack-aware"):
@@ -359,7 +362,10 @@ def _refresh_priority_cache(scheduler: Any, adapter: SGLangAdapter) -> None:
     strategy_name = adapter._experiment_strategy_name
 
     # sglang_default / preempt-evict-sjf / vanilla_sglang: no priority cache needed
-    if strategy_name in ("sglang_default", "preempt-evict", "preempt-evict-sjf", "vanilla_sglang") or strategy is None:
+    if (
+        strategy_name in ("sglang_default", "preempt-evict", "preempt-evict-sjf", "vanilla_sglang")
+        or strategy is None
+    ):
         return
 
     running_reqs = _get_running_requests(scheduler)
@@ -587,30 +593,21 @@ def _proactive_srpt(scheduler: Any, adapter: SGLangAdapter) -> None:
 def _build_running_candidates(
     running_reqs: list[Any],
     adapter: SGLangAdapter,
-    scheduler: Any | None = None,
+    scheduler: Any | None = None,  # noqa: ARG001
 ) -> list[tuple[Any, Any]]:
     """Build (RequestState, sglang_request) pairs from running requests.
 
     When ``scheduler`` is provided, computes ``private_tokens`` for each
-    request by querying the SGLang radix tree.  The shared KV slot set is
-    built once per call to avoid repeated tree traversals.
+    request. radix_hook.py was removed (Mode B cleaned up 2026-04-08), so
+    ``private_tokens`` is always 0: Branch B (v8-frozen) of the bid formula
+    is always used.
     """
     from bidkv.baselines.base import RequestState
 
     now_ms = time.monotonic() * 1000
     slo_timeout_ms = 120_000.0
 
-    # Pre-compute shared KV slots once for the whole batch (O(tree_nodes))
-    shared_slots: "frozenset[int] | None" = None
-    if scheduler is not None:
-        try:
-            from bidkv.adapters.sglang.radix_hook import (
-                get_private_token_count,
-                get_shared_kv_slots,
-            )
-            shared_slots = get_shared_kv_slots(scheduler)
-        except Exception:  # noqa: BLE001
-            shared_slots = None
+    # radix_hook.py removed (Mode B cleaned up 2026-04-08); private_tokens = 0.
 
     pairs: list[tuple[Any, Any]] = []
     for req in running_reqs:
@@ -634,22 +631,16 @@ def _build_running_candidates(
 
         priority = -arrival_ms
 
-        # Compute private_tokens: KV tokens that WILL actually be freed on eviction
-        # (i.e. not shared with any other request in the radix tree).
         private_tokens = 0
-        if scheduler is not None and shared_slots is not None and num_computed > 0:
-            try:
-                private_tokens = get_private_token_count(
-                    scheduler, rid, num_computed, shared_slots=shared_slots
-                )
-            except Exception:  # noqa: BLE001
-                private_tokens = 0
 
         pairs.append(
             (
                 RequestState(
                     request_id=rid,
-                    current_tokens=num_computed if num_computed > 0 else (len(token_ids) if token_ids else 0),
+                    current_tokens=(
+                        num_computed if num_computed > 0
+                        else (len(token_ids) if token_ids else 0)
+                    ),
                     token_ids=tuple(token_ids) if token_ids else (),
                     priority=priority,
                     arrival_time_ms=arrival_ms,
