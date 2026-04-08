@@ -299,16 +299,19 @@ def generate_fig5(groups: dict) -> None:
 
 
 def generate_fig1_panel_b_scatter() -> None:
-    """Generate panel (b) for Figure 1: multi-strategy victim-selection scatter.
+    """Generate panel (b) for Figure 1: victim-selection CDF profiles.
 
-    Samples 150 time-points across the preempt-evict run at rate=3.8 (run 0).
-    At each snapshot every active request is a background candidate point:
-      X = invested decode work (tokens generated so far)
-      Y = estimated KV footprint (prompt-proxy + generated tokens)
-    Three strategies' victim choices are accumulated across all snapshots:
-      LIFO         : max first_token_time  → red dots
-      Largest-first: max Y                 → blue dots
-      BidKV        : max U=Y/(1+0.5c+ε)   → green dots
+    For each of 150 KV-pressure snapshots, record the chosen victim's:
+      - per-snapshot KV-footprint rank (0 = smallest candidate, 1 = largest)
+      - completion ratio c = progress in [0, 1]  (0 = just started, 1 = done)
+
+    Two stacked CDFs make the contrast overlap-free:
+      Top:    distribution of KV rank recovered  — higher is better
+      Bottom: distribution of recompute cost c   — lower (left) is better
+
+    Expected result:
+      KV CDFs:   LIFO gradual (random KV), LF step at 1.0, BidKV near-1
+      Cost CDFs: LIFO spike at c≈0, LF roughly uniform, BidKV left-shifted vs LF
 
     Output: paper/figures/fig1_intro_evidence_panel_b.{pdf,png}
     """
@@ -335,28 +338,25 @@ def generate_fig1_panel_b_scatter() -> None:
     t0 = min(r["submit_time"] for r in ok)
     t1 = max(r["finish_time"] for r in ok)
 
-    def _xy(r: dict, t: float) -> tuple[float, float]:
+    def _c_kv(r: dict, t: float) -> tuple[float, float]:
         progress = (t - r["first_token_time"]) / max(
             r["finish_time"] - r["first_token_time"], 1e-6
         )
         progress = min(max(progress, 0.001), 0.999)
-        gen = r["completion_tokens"] * progress
+        gen = float(r["completion_tokens"]) * progress
         est_prompt = min(r["ttft_ms"], 1000.0) * 0.3 + 50.0
-        return gen, est_prompt + gen
+        return progress, est_prompt + gen  # (c, Y)
 
-    # ── Sample 150 time-points across the middle 80% of the run ─────────────
     N_SAMPLES = 150
     MIN_CONC = 6
     EPSILON = 0.01
 
-    bg_x: list[float] = []
-    bg_y: list[float] = []
-    lifo_sx: list[float] = []
-    lifo_sy: list[float] = []
-    lf_sx: list[float] = []
-    lf_sy: list[float] = []
-    bk_sx: list[float] = []
-    bk_sy: list[float] = []
+    lifo_ky: list[float] = []
+    lifo_c: list[float] = []
+    lf_ky: list[float] = []
+    lf_c: list[float] = []
+    bk_ky: list[float] = []
+    bk_c: list[float] = []
 
     for i in range(N_SAMPLES):
         t = t0 + (t1 - t0) * (0.1 + 0.8 * i / N_SAMPLES)
@@ -364,101 +364,98 @@ def generate_fig1_panel_b_scatter() -> None:
         if len(snap) < MIN_CONC:
             continue
 
-        pairs = [_xy(r, t) for r in snap]
-        xs = [p[0] for p in pairs]
-        ys = [p[1] for p in pairs]
+        n = len(snap)
+        pairs = [_c_kv(r, t) for r in snap]  # (c, Y)
 
-        bg_x.extend(xs)
-        bg_y.extend(ys)
+        # Per-snapshot rank on Y = KV footprint (0 = smallest, 1 = largest)
+        sy = sorted(range(n), key=lambda j: pairs[j][1])
+        rank_y = [0.0] * n
+        for rk, idx in enumerate(sy):
+            rank_y[idx] = rk / max(n - 1, 1)
 
-        # LIFO: most recently entered decode phase
-        li = max(range(len(snap)), key=lambda j: snap[j]["first_token_time"])
-        lifo_sx.append(xs[li])
-        lifo_sy.append(ys[li])
+        # LIFO: most recently started decoding (max first_token_time)
+        li = max(range(n), key=lambda j: snap[j]["first_token_time"])
+        lifo_ky.append(rank_y[li])
+        lifo_c.append(pairs[li][0])
 
-        # Largest-first: maximum KV footprint
-        lfi = max(range(len(snap)), key=lambda j: ys[j])
-        lf_sx.append(xs[lfi])
-        lf_sy.append(ys[lfi])
+        # Largest-first: max KV footprint (rank_y always 1.0 by definition)
+        lfi = max(range(n), key=lambda j: pairs[j][1])
+        lf_ky.append(rank_y[lfi])
+        lf_c.append(pairs[lfi][0])
 
-        # BidKV: maximum utility U = Y / (1 + 0.5*c + ε)
+        # BidKV: max utility U = Y / (1 + 0.5*c + ε)
         us = [
-            ys[j] / (1.0 + 0.5 * xs[j] / max(float(snap[j]["completion_tokens"]), 1.0) + EPSILON)
-            for j in range(len(snap))
+            pairs[j][1] / (1.0 + 0.5 * pairs[j][0] + EPSILON)
+            for j in range(n)
         ]
-        bi = max(range(len(snap)), key=lambda j: us[j])
-        bk_sx.append(xs[bi])
-        bk_sy.append(ys[bi])
+        bi = max(range(n), key=lambda j: us[j])
+        bk_ky.append(rank_y[bi])
+        bk_c.append(pairs[bi][0])
 
-    n_snaps = len(lifo_sx)
+    n_snaps = len(lifo_ky)
+
+    def _cdf(vals: list[float]) -> tuple[list[float], list[float]]:
+        sv = sorted(vals)
+        probs = [(i + 1) / len(sv) for i in range(len(sv))]
+        return sv, probs
 
     # ── Figure ────────────────────────────────────────────────────────────────
     plt.rcParams.update({
         "font.family": "serif",
         "font.size": 8,
-        "axes.labelsize": 8,
-        "axes.titlesize": 8.5,
-        "xtick.labelsize": 7,
-        "ytick.labelsize": 7,
+        "axes.labelsize": 7.5,
+        "axes.titlesize": 8,
+        "xtick.labelsize": 6.5,
+        "ytick.labelsize": 6.5,
         "legend.fontsize": 6.5,
         "axes.linewidth": 0.6,
         "grid.linewidth": 0.4,
     })
 
-    fig, ax = plt.subplots(figsize=(3.35, 3.2))  # half of ACM two-column textwidth
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(3.35, 3.0), sharex=False)
+    colors = {"LIFO": "#d62728", "Largest-first": "#1f77b4", "BidKV": "#2ca02c"}
 
-    x_max = max(bg_x)
-    y_max = max(bg_y)
-    y_min = min(bg_y)
+    # ── Top: CDF of KV-footprint rank ─────────────────────────────────────────
+    for label, vals in [("LIFO", lifo_ky), ("Largest-first", lf_ky), ("BidKV", bk_ky)]:
+        xs, ys = _cdf(vals)
+        ax1.plot([0.0] + xs + [1.0], [0.0] + ys + [1.0],
+                 color=colors[label], lw=1.5, label=label, drawstyle="steps-post")
+    ax1.set_xlim(-0.02, 1.04)
+    ax1.set_ylim(-0.03, 1.08)
+    ax1.set_xlabel("KV-Footprint Rank of Selected Victim  (1 = largest)", labelpad=2)
+    ax1.set_ylabel("CDF", labelpad=2)
+    ax1.text(0.01, 0.97, "more KV freed →", transform=ax1.transAxes,
+             ha="left", va="top", fontsize=5.5, color="#555555", style="italic")
+    ax1.legend(loc="upper left", framealpha=0.9, fontsize=6.5,
+               handlelength=1.4, borderpad=0.4, labelspacing=0.25)
+    ax1.grid(True, linestyle=":", alpha=0.35)
 
-    # Background: all candidates (very light grey, rasterised for PDF size)
-    ax.scatter(bg_x, bg_y, s=4, color="#c8c8c8", edgecolors="none",
-               alpha=0.3, zorder=1, rasterized=True, label="All candidates")
+    # ── Bottom: CDF of completion ratio c ────────────────────────────────────
+    for label, vals in [("LIFO", lifo_c), ("Largest-first", lf_c), ("BidKV", bk_c)]:
+        xs, ys = _cdf(vals)
+        ax2.plot([0.0] + xs + [1.0], [0.0] + ys + [1.0],
+                 color=colors[label], lw=1.5, label=label, drawstyle="steps-post")
+    ax2.set_xlim(-0.02, 1.04)
+    ax2.set_ylim(-0.03, 1.08)
+    ax2.set_xlabel("Completion Ratio $c$ of Selected Victim  (0 = newest)", labelpad=2)
+    ax2.set_ylabel("CDF", labelpad=2)
+    ax2.text(0.99, 0.03, "← less recompute cost", transform=ax2.transAxes,
+             ha="right", va="bottom", fontsize=5.5, color="#555555", style="italic")
+    ax2.grid(True, linestyle=":", alpha=0.35)
 
-    # Strategy selections (solid, semi-transparent colored dots)
-    ax.scatter(lifo_sx, lifo_sy, s=16, color="#d62728", edgecolors="none",
-               alpha=0.65, zorder=3, label="LIFO")
-    ax.scatter(lf_sx, lf_sy, s=16, color="#1f77b4", edgecolors="none",
-               alpha=0.65, zorder=4, label="Largest-first")
-    ax.scatter(bk_sx, bk_sy, s=16, color="#2ca02c", edgecolors="none",
-               alpha=0.65, zorder=5, label="BidKV")
-
-    # ── Tradeoff direction arrows ─────────────────────────────────────────────
-    ax.annotate(
-        "", xy=(x_max * -0.01, y_max * 1.06), xytext=(x_max * -0.01, y_max * 0.75),
-        arrowprops=dict(arrowstyle="-|>", color="#555555", lw=1.0),
-        annotation_clip=False,
-    )
-    ax.text(
-        x_max * -0.02, y_max * 0.905,
-        "more\nKV freed", ha="right", va="center",
-        fontsize=5.5, color="#555555", style="italic", clip_on=False,
-    )
-    ax.annotate(
-        "", xy=(x_max * 0.55, y_max * 1.06), xytext=(x_max * 1.02, y_max * 1.06),
-        arrowprops=dict(arrowstyle="-|>", color="#555555", lw=1.0),
-        annotation_clip=False,
-    )
-    ax.text(
-        x_max * 0.785, y_max * 1.08,
-        "less recompute cost", ha="center", va="bottom",
-        fontsize=5.5, color="#555555", style="italic", clip_on=False,
-    )
-
-    ax.set_xlabel("Invested Decode Work (tokens generated so far)")
-    ax.set_ylabel("KV Footprint (tokens)")
-    ax.set_title("(b) Victim Selection at Peak KV Pressure", pad=4)
-    ax.set_xlim(x_max * -0.08, x_max * 1.08)
-    ax.set_ylim(y_min * 0.84, y_max * 1.12)
-    ax.grid(True, linestyle=":", alpha=0.35)
-    ax.legend(loc="center right", framealpha=0.92, fontsize=6.5, ncol=1)
-
-    fig.tight_layout(pad=0.6)
+    fig.suptitle("(b) Victim-Selection Profiles  ($n$=" + str(n_snaps) + " snapshots)",
+                 fontsize=8, y=1.01)
+    fig.tight_layout(pad=0.5, h_pad=0.8)
     save_fig(fig, "fig1_intro_evidence_panel_b")
     plt.close(fig)
+
+    def _mean(lst: list[float]) -> float:
+        return sum(lst) / len(lst) if lst else float("nan")
+
     print(
-        f"  Panel (b): {len(bg_x)} bg pts, {n_snaps} snapshots | "
-        f"LIFO / LF / BidKV selections: {len(lifo_sx)} / {len(lf_sx)} / {len(bk_sx)}"
+        f"  Panel (b): {n_snaps} snapshots\n"
+        f"    KV rank mean  — LIFO:{_mean(lifo_ky):.3f}  LF:{_mean(lf_ky):.3f}  BidKV:{_mean(bk_ky):.3f}\n"
+        f"    c mean        — LIFO:{_mean(lifo_c):.3f}  LF:{_mean(lf_c):.3f}  BidKV:{_mean(bk_c):.3f}"
     )
 
 
