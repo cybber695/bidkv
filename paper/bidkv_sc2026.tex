@@ -134,13 +134,14 @@ responsiveness under sustained KV pressure.
     snapshot at peak KV pressure (rate\,=\,3.8\,req/s).
     Each dot is an active candidate; coloured markers show each strategy's
     chosen victim.
-    LIFO\,(\texttimes) picks the newest, smallest-footprint request---worst
-    possible.
-    Largest-first\,(\(\blacklozenge\)) maximises KV freed but ignores the
-    195-token recompute debt already accrued.
-    BidKV\,($\bigstar$) selects for utility $U\!=\!Y/(1{+}0.5c)$: nearly
-    equal KV recovery at half the recompute cost.
-    Random\,(\(\circ\)) is arbitrary but incidentally reasonable here.}
+    LIFO\,(\texttimes) picks the newest, smallest-footprint request
+    (bottom-left), freeing minimal KV while incurring full prompt recompute.
+    Largest-first\,(\(\blacklozenge\)) maximises KV freed but also
+    maximises the invested decode work (195~tokens already generated).
+    BidKV\,($\bigstar$) selects for $U\!=\!Y/(1{+}0.5c)$: nearly equal
+    KV recovery to Largest-first, at roughly half the recompute cost
+    ($c\approx0.24$ vs.\ $c\approx0.98$)---the utility-optimal choice.
+    Random\,(\(\circ\)) is opaque and non-repeatable.}
   \label{fig:intro:lifo}
 \end{subfigure}
 \caption{\textbf{The victim-selection problem under KV pressure.}

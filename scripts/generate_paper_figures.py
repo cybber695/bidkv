@@ -321,7 +321,6 @@ def generate_fig1_panel_b_scatter() -> None:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    import matplotlib.patches as mpatches
 
     pe_path = RESULTS_DIR / "preempt-evict__mixed__rate3.8__r0.json"
     if not pe_path.exists():
@@ -450,27 +449,54 @@ def generate_fig1_panel_b_scatter() -> None:
         zorder=7, label="LIFO",
     )
 
-    # ── "Ideal Victims" dashed box in the top-left ────────────────────────────
-    box_x_right = x_max * 0.28
-    box_y_bottom = y_max * 0.68
-
-    rect = mpatches.FancyBboxPatch(
-        (0, box_y_bottom),
-        box_x_right, y_max * 1.05 - box_y_bottom,
-        boxstyle="square,pad=0",
-        linestyle="--", linewidth=1.0,
-        edgecolor="#1a6e33", facecolor="#e9f8ed", alpha=0.55,
-        zorder=2,
+    # ── Tradeoff direction arrows (replace misleading ideal-zone box) ─────────
+    # Arrow: "↑ more KV freed" along Y axis
+    ax.annotate(
+        "", xy=(x_max * -0.01, y_max * 1.08), xytext=(x_max * -0.01, y_max * 0.72),
+        arrowprops=dict(arrowstyle="-|>", color="#555555", lw=1.0),
+        annotation_clip=False,
     )
-    ax.add_patch(rect)
     ax.text(
-        box_x_right * 0.48, y_max * 1.02,
-        "Ideal Victims\n(large footprint,\nlow decode work)",
-        ha="center", va="top",
-        fontsize=6.0, color="#1a6e33", style="italic",
-        bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="#1a6e33",
-                  alpha=0.85, lw=0.6),
-        zorder=8,
+        x_max * -0.02, y_max * 0.90,
+        "more\nKV freed", ha="right", va="center",
+        fontsize=5.5, color="#555555", style="italic",
+        clip_on=False,
+    )
+    # Arrow: "← less recompute cost" along X axis (placed in upper-right empty area)
+    ax.annotate(
+        "", xy=(x_max * 0.60, y_max * 1.05), xytext=(x_max * 1.02, y_max * 1.05),
+        arrowprops=dict(arrowstyle="-|>", color="#555555", lw=1.0),
+        annotation_clip=False,
+    )
+    ax.text(
+        x_max * 0.81, y_max * 1.07,
+        "less recompute cost", ha="center", va="bottom",
+        fontsize=5.5, color="#555555", style="italic",
+        clip_on=False,
+    )
+
+    # ── BidKV annotation: utility-optimal ────────────────────────────────────
+    ax.annotate(
+        "Utility-optimal:\nhigh KV, moderate cost",
+        xy=(bk_x, bk_y),
+        xytext=(bk_x - x_max * 0.30, bk_y - y_max * 0.14),
+        fontsize=5.5, color="#1a7f1a",
+        arrowprops=dict(arrowstyle="->", color="#1a7f1a", lw=0.9),
+        bbox=dict(boxstyle="round,pad=0.22", fc="white", ec="#1a7f1a",
+                  alpha=0.92, lw=0.6),
+        zorder=9,
+    )
+
+    # ── LIFO annotation ───────────────────────────────────────────────────────
+    ax.annotate(
+        "LIFO: min KV freed",
+        xy=(lifo_x, lifo_y),
+        xytext=(lifo_x + x_max * 0.16, lifo_y - y_max * 0.10),
+        fontsize=5.5, color="#d62728",
+        arrowprops=dict(arrowstyle="->", color="#d62728", lw=0.8),
+        bbox=dict(boxstyle="round,pad=0.22", fc="white", ec="#d62728",
+                  alpha=0.92, lw=0.6),
+        zorder=9,
     )
 
     ax.set_xlabel("Invested Decode Work (tokens generated so far)")
@@ -480,8 +506,8 @@ def generate_fig1_panel_b_scatter() -> None:
         f"({len(snap)} concurrent requests, rate=3.8 req/s)",
         pad=3,
     )
-    ax.set_xlim(-3, x_max * 1.08)
-    ax.set_ylim(min(ys_all) * 0.90, y_max * 1.12)
+    ax.set_xlim(x_max * -0.08, x_max * 1.08)
+    ax.set_ylim(min(ys_all) * 0.84, y_max * 1.12)
     ax.grid(True, linestyle=":", alpha=0.35)
     ax.legend(loc="lower right", framealpha=0.88, fontsize=6.5, ncol=1)
 
