@@ -301,20 +301,14 @@ def generate_fig5(groups: dict) -> None:
 def generate_fig1_panel_b_scatter() -> None:
     """Generate panel (b) for Figure 1: multi-strategy victim-selection scatter.
 
-    Reads the preempt-evict run at rate=3.8 (run 0) and reconstructs a
-    snapshot at the peak-concurrency moment.  For each request active at that
-    instant the function plots:
-      X = invested decode work (tokens generated so far at snapshot)
+    Samples 150 time-points across the preempt-evict run at rate=3.8 (run 0).
+    At each snapshot every active request is a background candidate point:
+      X = invested decode work (tokens generated so far)
       Y = estimated KV footprint (prompt-proxy + generated tokens)
-
-    Four strategies are compared on the *same* snapshot:
-      - LIFO         : max first_token_time (newest request) → red ×
-      - Largest-first: max Y (biggest KV footprint) → blue ◆
-      - BidKV        : max U = Y / (1 + 0.5·c + ε), c = gen/total → green ★
-      - Random       : random.Random(42) selection → orange ○ (outline)
-
-    The "Ideal Victims" region (top-left: large footprint, low decode work)
-    is annotated with a dashed box.
+    Three strategies' victim choices are accumulated across all snapshots:
+      LIFO         : max first_token_time  → red dots
+      Largest-first: max Y                 → blue dots
+      BidKV        : max U=Y/(1+0.5c+ε)   → green dots
 
     Output: paper/figures/fig1_intro_evidence_panel_b.{pdf,png}
     """
@@ -341,59 +335,62 @@ def generate_fig1_panel_b_scatter() -> None:
     t0 = min(r["submit_time"] for r in ok)
     t1 = max(r["finish_time"] for r in ok)
 
-    # ── Find snapshot with peak decode concurrency (middle 60% of experiment) ──
-    best_t = t0 + (t1 - t0) * 0.5
-    best_n = 0
-    for i in range(300):
-        frac = 0.2 + 0.6 * i / 300
-        t = t0 + (t1 - t0) * frac
-        active = [r for r in ok if r["first_token_time"] <= t <= r["finish_time"]]
-        if len(active) > best_n:
-            best_n = len(active)
-            best_t = t
-
-    snap = [r for r in ok if r["first_token_time"] <= best_t <= r["finish_time"]]
-
-    # ── Compute (X, Y) for each request at the snapshot ──────────────────────
-    xs_all, ys_all = [], []
-    for r in snap:
-        denom = r["finish_time"] - r["first_token_time"]
-        progress = (best_t - r["first_token_time"]) / max(denom, 1e-6)
+    def _xy(r: dict, t: float) -> tuple[float, float]:
+        progress = (t - r["first_token_time"]) / max(
+            r["finish_time"] - r["first_token_time"], 1e-6
+        )
         progress = min(max(progress, 0.001), 0.999)
         gen = r["completion_tokens"] * progress
-        # Prompt proxy: cap TTFT at 1000 ms to strip queuing noise; scale 0.3 tok/ms
         est_prompt = min(r["ttft_ms"], 1000.0) * 0.3 + 50.0
-        xs_all.append(gen)
-        ys_all.append(est_prompt + gen)
+        return gen, est_prompt + gen
 
-    # ── LIFO victim: most recently started decoding ───────────────────────────
-    lifo_idx = max(range(len(snap)), key=lambda i: snap[i]["first_token_time"])
-    lifo_r = snap[lifo_idx]
-    p_lifo = (best_t - lifo_r["first_token_time"]) / max(
-        lifo_r["finish_time"] - lifo_r["first_token_time"], 1e-6
-    )
-    p_lifo = min(max(p_lifo, 0.001), 0.999)
-    lifo_x = lifo_r["completion_tokens"] * p_lifo
-    lifo_y = min(lifo_r["ttft_ms"], 1000.0) * 0.3 + 50.0 + lifo_x
+    # ── Sample 150 time-points across the middle 80% of the run ─────────────
+    N_SAMPLES = 150
+    MIN_CONC = 6
+    EPSILON = 0.01
 
-    # ── Largest-first victim: max KV footprint ───────────────────────────────
-    lf_idx = max(range(len(snap)), key=lambda i: ys_all[i])
-    lf_x, lf_y = xs_all[lf_idx], ys_all[lf_idx]
+    bg_x: list[float] = []
+    bg_y: list[float] = []
+    lifo_sx: list[float] = []
+    lifo_sy: list[float] = []
+    lf_sx: list[float] = []
+    lf_sy: list[float] = []
+    bk_sx: list[float] = []
+    bk_sy: list[float] = []
 
-    # ── BidKV victim: max U = Y / (1 + 0.5*c + ε), c = progress ratio ───────
-    epsilon = 0.01
-    us = []
-    for i, r in enumerate(snap):
-        c = xs_all[i] / max(float(r["completion_tokens"]), 1.0)
-        us.append(ys_all[i] / (1.0 + 0.5 * c + epsilon))
-    bk_idx = max(range(len(snap)), key=lambda i: us[i])
-    bk_x, bk_y = xs_all[bk_idx], ys_all[bk_idx]
+    for i in range(N_SAMPLES):
+        t = t0 + (t1 - t0) * (0.1 + 0.8 * i / N_SAMPLES)
+        snap = [r for r in ok if r["first_token_time"] <= t <= r["finish_time"]]
+        if len(snap) < MIN_CONC:
+            continue
 
-    # ── Random victim (fixed seed=42) ────────────────────────────────────────
-    import random as _random
-    rng = _random.Random(42)
-    rand_idx = rng.randrange(len(snap))
-    rand_x, rand_y = xs_all[rand_idx], ys_all[rand_idx]
+        pairs = [_xy(r, t) for r in snap]
+        xs = [p[0] for p in pairs]
+        ys = [p[1] for p in pairs]
+
+        bg_x.extend(xs)
+        bg_y.extend(ys)
+
+        # LIFO: most recently entered decode phase
+        li = max(range(len(snap)), key=lambda j: snap[j]["first_token_time"])
+        lifo_sx.append(xs[li])
+        lifo_sy.append(ys[li])
+
+        # Largest-first: maximum KV footprint
+        lfi = max(range(len(snap)), key=lambda j: ys[j])
+        lf_sx.append(xs[lfi])
+        lf_sy.append(ys[lfi])
+
+        # BidKV: maximum utility U = Y / (1 + 0.5*c + ε)
+        us = [
+            ys[j] / (1.0 + 0.5 * xs[j] / max(float(snap[j]["completion_tokens"]), 1.0) + EPSILON)
+            for j in range(len(snap))
+        ]
+        bi = max(range(len(snap)), key=lambda j: us[j])
+        bk_sx.append(xs[bi])
+        bk_sy.append(ys[bi])
+
+    n_snaps = len(lifo_sx)
 
     # ── Figure ────────────────────────────────────────────────────────────────
     plt.rcParams.update({
@@ -408,118 +405,60 @@ def generate_fig1_panel_b_scatter() -> None:
         "grid.linewidth": 0.4,
     })
 
-    fig, ax = plt.subplots(figsize=(4.5, 3.2))  # half ACM textwidth (figure*)
+    fig, ax = plt.subplots(figsize=(3.35, 3.2))  # half of ACM two-column textwidth
 
-    x_max = max(xs_all)
-    y_max = max(ys_all)
+    x_max = max(bg_x)
+    y_max = max(bg_y)
+    y_min = min(bg_y)
 
-    # All candidates as light-grey dots
-    ax.scatter(
-        xs_all, ys_all,
-        s=28, color="#b0b0b0", edgecolors="#808080", linewidths=0.4,
-        zorder=3, label="Active candidate",
-    )
+    # Background: all candidates (very light grey, rasterised for PDF size)
+    ax.scatter(bg_x, bg_y, s=4, color="#c8c8c8", edgecolors="none",
+               alpha=0.3, zorder=1, rasterized=True, label="All candidates")
 
-    # Random victim — orange hollow circle (drawn first so others can overlap)
-    ax.scatter(
-        [rand_x], [rand_y],
-        marker="o", s=130, color="none",
-        edgecolors="#e67e00", linewidths=1.8,
-        zorder=4, label="Random",
-    )
+    # Strategy selections (solid, semi-transparent colored dots)
+    ax.scatter(lifo_sx, lifo_sy, s=16, color="#d62728", edgecolors="none",
+               alpha=0.65, zorder=3, label="LIFO")
+    ax.scatter(lf_sx, lf_sy, s=16, color="#1f77b4", edgecolors="none",
+               alpha=0.65, zorder=4, label="Largest-first")
+    ax.scatter(bk_sx, bk_sy, s=16, color="#2ca02c", edgecolors="none",
+               alpha=0.65, zorder=5, label="BidKV")
 
-    # Largest-first victim — blue diamond
-    ax.scatter(
-        [lf_x], [lf_y],
-        marker="D", s=100, color="#1f77b4", edgecolors="#003d7a", linewidths=0.8,
-        zorder=5, label="Largest-first",
-    )
-
-    # BidKV victim — green star
-    ax.scatter(
-        [bk_x], [bk_y],
-        marker="*", s=260, color="#2ca02c", edgecolors="#145a14", linewidths=0.6,
-        zorder=6, label="BidKV",
-    )
-
-    # LIFO victim — red × (on top)
-    ax.scatter(
-        [lifo_x], [lifo_y],
-        marker="X", s=160, color="#d62728", edgecolors="#8b0000", linewidths=0.8,
-        zorder=7, label="LIFO",
-    )
-
-    # ── Tradeoff direction arrows (replace misleading ideal-zone box) ─────────
-    # Arrow: "↑ more KV freed" along Y axis
+    # ── Tradeoff direction arrows ─────────────────────────────────────────────
     ax.annotate(
-        "", xy=(x_max * -0.01, y_max * 1.08), xytext=(x_max * -0.01, y_max * 0.72),
+        "", xy=(x_max * -0.01, y_max * 1.06), xytext=(x_max * -0.01, y_max * 0.75),
         arrowprops=dict(arrowstyle="-|>", color="#555555", lw=1.0),
         annotation_clip=False,
     )
     ax.text(
-        x_max * -0.02, y_max * 0.90,
+        x_max * -0.02, y_max * 0.905,
         "more\nKV freed", ha="right", va="center",
-        fontsize=5.5, color="#555555", style="italic",
-        clip_on=False,
+        fontsize=5.5, color="#555555", style="italic", clip_on=False,
     )
-    # Arrow: "← less recompute cost" along X axis (placed in upper-right empty area)
     ax.annotate(
-        "", xy=(x_max * 0.60, y_max * 1.05), xytext=(x_max * 1.02, y_max * 1.05),
+        "", xy=(x_max * 0.55, y_max * 1.06), xytext=(x_max * 1.02, y_max * 1.06),
         arrowprops=dict(arrowstyle="-|>", color="#555555", lw=1.0),
         annotation_clip=False,
     )
     ax.text(
-        x_max * 0.81, y_max * 1.07,
+        x_max * 0.785, y_max * 1.08,
         "less recompute cost", ha="center", va="bottom",
-        fontsize=5.5, color="#555555", style="italic",
-        clip_on=False,
-    )
-
-    # ── BidKV annotation: utility-optimal ────────────────────────────────────
-    ax.annotate(
-        "Utility-optimal:\nhigh KV, moderate cost",
-        xy=(bk_x, bk_y),
-        xytext=(bk_x - x_max * 0.30, bk_y - y_max * 0.14),
-        fontsize=5.5, color="#1a7f1a",
-        arrowprops=dict(arrowstyle="->", color="#1a7f1a", lw=0.9),
-        bbox=dict(boxstyle="round,pad=0.22", fc="white", ec="#1a7f1a",
-                  alpha=0.92, lw=0.6),
-        zorder=9,
-    )
-
-    # ── LIFO annotation ───────────────────────────────────────────────────────
-    ax.annotate(
-        "LIFO: min KV freed",
-        xy=(lifo_x, lifo_y),
-        xytext=(lifo_x + x_max * 0.16, lifo_y - y_max * 0.10),
-        fontsize=5.5, color="#d62728",
-        arrowprops=dict(arrowstyle="->", color="#d62728", lw=0.8),
-        bbox=dict(boxstyle="round,pad=0.22", fc="white", ec="#d62728",
-                  alpha=0.92, lw=0.6),
-        zorder=9,
+        fontsize=5.5, color="#555555", style="italic", clip_on=False,
     )
 
     ax.set_xlabel("Invested Decode Work (tokens generated so far)")
     ax.set_ylabel("KV Footprint (tokens)")
-    ax.set_title(
-        f"(b) Victim Selection at Peak KV Pressure\n"
-        f"({len(snap)} concurrent requests, rate=3.8 req/s)",
-        pad=3,
-    )
+    ax.set_title("(b) Victim Selection at Peak KV Pressure", pad=4)
     ax.set_xlim(x_max * -0.08, x_max * 1.08)
-    ax.set_ylim(min(ys_all) * 0.84, y_max * 1.12)
+    ax.set_ylim(y_min * 0.84, y_max * 1.12)
     ax.grid(True, linestyle=":", alpha=0.35)
-    ax.legend(loc="lower right", framealpha=0.88, fontsize=6.5, ncol=1)
+    ax.legend(loc="center right", framealpha=0.92, fontsize=6.5, ncol=1)
 
     fig.tight_layout(pad=0.6)
     save_fig(fig, "fig1_intro_evidence_panel_b")
     plt.close(fig)
     print(
-        f"  Snapshot: {len(snap)} concurrent | "
-        f"LIFO=({lifo_x:.0f},{lifo_y:.0f}) "
-        f"LF=({lf_x:.0f},{lf_y:.0f}) "
-        f"BidKV=({bk_x:.0f},{bk_y:.0f}) "
-        f"Rand=({rand_x:.0f},{rand_y:.0f})"
+        f"  Panel (b): {len(bg_x)} bg pts, {n_snaps} snapshots | "
+        f"LIFO / LF / BidKV selections: {len(lifo_sx)} / {len(lf_sx)} / {len(bk_sx)}"
     )
 
 

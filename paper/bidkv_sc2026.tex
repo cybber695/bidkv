@@ -130,26 +130,24 @@ responsiveness under sustained KV pressure.
 \hfill
 \begin{subfigure}[b]{0.50\textwidth}
   \includegraphics[width=\linewidth]{figures/fig1_intro_evidence_panel_b.pdf}
-  \caption{Victim selection by four strategies on the \emph{same} 32-request
-    snapshot at peak KV pressure (rate\,=\,3.8\,req/s).
-    Each dot is an active candidate; coloured markers show each strategy's
-    chosen victim.
-    LIFO\,(\texttimes) picks the newest, smallest-footprint request
-    (bottom-left), freeing minimal KV while incurring full prompt recompute.
-    Largest-first\,(\(\blacklozenge\)) maximises KV freed but also
-    maximises the invested decode work (195~tokens already generated).
-    BidKV\,($\bigstar$) selects for $U\!=\!Y/(1{+}0.5c)$: nearly equal
-    KV recovery to Largest-first, at roughly half the recompute cost
-    ($c\approx0.24$ vs.\ $c\approx0.98$)---the utility-optimal choice.
-    Random\,(\(\circ\)) is opaque and non-repeatable.}
+  \caption{Victim choices by three strategies across 150 KV-pressure snapshots
+    (mixed ShareGPT, rate\,=\,3.8\,req/s).
+    Grey dots are all active candidates; coloured dots are each strategy's
+    selected victim per snapshot.
+    LIFO\,(red) always picks the newest, smallest-footprint request
+    (bottom-left cluster).
+    Largest-first\,(blue) always picks maximum KV footprint, but also the
+    highest decode-work requests (top-right edge).
+    BidKV\,(green) distributes across the high-KV, moderate-cost band,
+    maximising utility $U\!=\!Y/(1{+}0.5c)$.}
   \label{fig:intro:lifo}
 \end{subfigure}
 \caption{\textbf{The victim-selection problem under KV pressure.}
-  (a)~Reclamation opportunity varies by orders of magnitude across
-  concurrently active requests at each pressure event.
-  (b)~Four strategies selecting from the same 32-request snapshot:
-  LIFO picks the worst victim; Largest-first ignores recompute cost;
-  BidKV achieves the best utility trade-off; Random is opaque.}
+  (a)~Reclamation opportunity spans orders of magnitude across concurrently
+  active requests at each pressure event.
+  (b)~Victim selections across 150 snapshots: LIFO consistently wastes
+  preemption events (bottom-left); Largest-first ignores recompute cost
+  (top-right edge); BidKV targets the high-KV, moderate-cost band.}
 \label{fig:intro_evidence}
 \end{figure*}
 
