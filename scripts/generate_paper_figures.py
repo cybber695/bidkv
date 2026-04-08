@@ -324,23 +324,37 @@ def generate_fig1_panel_b_scatter() -> None:
     import numpy as np
 
     pe_path = RESULTS_DIR / "preempt-evict__mixed__rate3.8__r0.json"
+    sjf_path = RESULTS_DIR / "preempt-evict-sjf__mixed__rate3.8__r0.json"
+    bk_path  = RESULTS_DIR / "bidkv__mixed__rate3.8__r0.json"
     if not pe_path.exists():
         print(f"  SKIP fig1_panel_b: {pe_path} not found", file=sys.stderr)
         return
 
-    with open(pe_path) as f:
-        d = json.load(f)
+    def _load_ok(path: "pathlib.Path") -> list[dict]:
+        with open(path) as f:
+            data = json.load(f)
+        return [
+            r for r in data["request_results"]
+            if not r.get("error")
+            and r.get("first_token_time")
+            and r.get("finish_time")
+            and r["finish_time"] > r["first_token_time"]
+        ]
 
-    ok = [
-        r for r in d["request_results"]
-        if not r.get("error")
-        and r.get("first_token_time")
-        and r.get("finish_time")
-        and r["finish_time"] > r["first_token_time"]
-    ]
+    ok_pe  = _load_ok(pe_path)
+    ok_sjf = _load_ok(sjf_path) if sjf_path.exists() else ok_pe
+    ok_bk  = _load_ok(bk_path)  if bk_path.exists()  else ok_pe
 
-    t0 = min(r["submit_time"] for r in ok)
-    t1 = max(r["finish_time"] for r in ok)
+    t0 = min(r["submit_time"] for r in ok_pe)
+    t1 = max(r["finish_time"] for r in ok_pe)
+
+    # For PE-SJF: align time axis to its own run extent
+    t0_sjf = min(r["submit_time"] for r in ok_sjf)
+    t1_sjf = max(r["finish_time"] for r in ok_sjf)
+
+    # For BidKV: align to its own run extent
+    t0_bk = min(r["submit_time"] for r in ok_bk)
+    t1_bk = max(r["finish_time"] for r in ok_bk)
 
     def _c_kv(r: dict, t: float) -> tuple[float, float]:
         progress = (t - r["first_token_time"]) / max(
@@ -357,44 +371,42 @@ def generate_fig1_panel_b_scatter() -> None:
 
     lifo_c: list[float] = []
     lifo_r: list[float] = []
-    lf_c: list[float] = []
-    lf_r: list[float] = []
+    sjf_c: list[float] = []
+    sjf_r: list[float] = []
     bk_c: list[float] = []
     bk_r: list[float] = []
 
-    for i in range(N_SAMPLES):
-        t = t0 + (t1 - t0) * (0.1 + 0.8 * i / N_SAMPLES)
-        snap = [r for r in ok if r["first_token_time"] <= t <= r["finish_time"]]
-        if len(snap) < MIN_CONC:
-            continue
+    def _snap_victims(
+        ok: list[dict],
+        t0: float,
+        t1: float,
+        mode: str,  # "lifo" | "sjf" | "bidkv"
+        out_c: list[float],
+        out_r: list[float],
+    ) -> None:
+        for i in range(N_SAMPLES):
+            t = t0 + (t1 - t0) * (0.1 + 0.8 * i / N_SAMPLES)
+            snap = [r for r in ok if r["first_token_time"] <= t <= r["finish_time"]]
+            if len(snap) < MIN_CONC:
+                continue
+            n = len(snap)
+            pairs = [_c_kv(r, t) for r in snap]
+            sy = sorted(range(n), key=lambda j: pairs[j][1])
+            rank_y = [0.0] * n
+            for rk, idx in enumerate(sy):
+                rank_y[idx] = rk / max(n - 1, 1)
+            if mode in ("lifo", "sjf"):
+                # Both PE and PE-SJF evict using LIFO (newest request first)
+                vi = max(range(n), key=lambda j: snap[j]["first_token_time"])
+            else:  # bidkv
+                us = [pairs[j][1] / (1.0 + 0.5 * pairs[j][0] + EPSILON) for j in range(n)]
+                vi = max(range(n), key=lambda j: us[j])
+            out_c.append(pairs[vi][0])
+            out_r.append(rank_y[vi])
 
-        n = len(snap)
-        pairs = [_c_kv(r, t) for r in snap]  # (c, Y)
-
-        # Per-snapshot rank on Y = KV footprint (0=smallest, 1=largest)
-        sy = sorted(range(n), key=lambda j: pairs[j][1])
-        rank_y = [0.0] * n
-        for rk, idx in enumerate(sy):
-            rank_y[idx] = rk / max(n - 1, 1)
-
-        # LIFO: most recently started decoding
-        li = max(range(n), key=lambda j: snap[j]["first_token_time"])
-        lifo_c.append(pairs[li][0])
-        lifo_r.append(rank_y[li])
-
-        # Largest-first: max KV footprint
-        lfi = max(range(n), key=lambda j: pairs[j][1])
-        lf_c.append(pairs[lfi][0])
-        lf_r.append(rank_y[lfi])
-
-        # BidKV: max utility U = Y / (1 + 0.5*c + ε)
-        us = [
-            pairs[j][1] / (1.0 + 0.5 * pairs[j][0] + EPSILON)
-            for j in range(n)
-        ]
-        bi = max(range(n), key=lambda j: us[j])
-        bk_c.append(pairs[bi][0])
-        bk_r.append(rank_y[bi])
+    _snap_victims(ok_pe,  t0,     t1,     "lifo",  lifo_c, lifo_r)
+    _snap_victims(ok_sjf, t0_sjf, t1_sjf, "sjf",   sjf_c,  sjf_r)
+    _snap_victims(ok_bk,  t0_bk,  t1_bk,  "bidkv", bk_c,   bk_r)
 
     n_snaps = len(lifo_c)
 
@@ -438,9 +450,9 @@ def generate_fig1_panel_b_scatter() -> None:
     fig, ax = plt.subplots(figsize=(3.35, 2.85))
 
     strategies = [
-        ("LIFO",          lifo_c, lifo_r, "#d62728"),
-        ("Largest-first", lf_c,   lf_r,   "#1f77b4"),
-        ("BidKV",         bk_c,   bk_r,   "#e8a800"),
+        ("LIFO",    lifo_c, lifo_r, "#d62728"),
+        ("PE-SJF",  sjf_c,  sjf_r,  "#1f77b4"),
+        ("BidKV",   bk_c,   bk_r,   "#e8a800"),
     ]
 
     # ── Ideal zone: upper-left quadrant ───────────────────────────────────────
@@ -475,7 +487,7 @@ def generate_fig1_panel_b_scatter() -> None:
     # ── Legend (manual, to include the mean marker style) ────────────────────
     handles = [
         mpatches.Patch(facecolor="#d62728", edgecolor="#d62728", alpha=0.7, label="LIFO"),
-        mpatches.Patch(facecolor="#1f77b4", edgecolor="#1f77b4", alpha=0.7, label="Largest-first"),
+        mpatches.Patch(facecolor="#1f77b4", edgecolor="#1f77b4", alpha=0.7, label="PE-SJF"),
         mpatches.Patch(facecolor="#e8a800", edgecolor="#e8a800", alpha=0.9, label="BidKV"),
     ]
     ax.legend(handles=handles, loc="lower right", framealpha=0.92,
@@ -506,8 +518,8 @@ def generate_fig1_panel_b_scatter() -> None:
 
     print(
         f"  Panel (b): {n_snaps} snapshots\n"
-        f"    KV rank mean  — LIFO:{_mean(lifo_r):.3f}  LF:{_mean(lf_r):.3f}  BidKV:{_mean(bk_r):.3f}\n"
-        f"    c mean        — LIFO:{_mean(lifo_c):.3f}  LF:{_mean(lf_c):.3f}  BidKV:{_mean(bk_c):.3f}"
+        f"    KV rank mean  — LIFO:{_mean(lifo_r):.3f}  PE-SJF:{_mean(sjf_r):.3f}  BidKV:{_mean(bk_r):.3f}\n"
+        f"    c mean        — LIFO:{_mean(lifo_c):.3f}  PE-SJF:{_mean(sjf_c):.3f}  BidKV:{_mean(bk_c):.3f}"
     )
 
 

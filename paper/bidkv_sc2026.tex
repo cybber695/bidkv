@@ -136,24 +136,24 @@ responsiveness under sustained KV pressure.
     ratio $c$ (recompute cost proxy; 0\,=\,newest), Y\,=\,KV-footprint rank
     (1\,=\,largest available).
     Filled ellipses show 1.5$\sigma$ concentration regions; diamonds mark means.
-    The \textbf{ideal zone} (green shading) is upper-left: high KV freed at low
+    The \textbf{ideal zone} (gold shading) is upper-left: high KV freed at low
     recompute cost.
-    LIFO\,(red) sits in the lower-left — low KV recovery ($\bar{r}\!=\!0.21$), wasting
-    each preemption opportunity.
-    Largest-first\,(blue) reaches the top edge ($\bar{r}\!=\!1.00$) but drifts
-    rightward ($\bar{c}\!=\!0.74$), incurring unnecessary recompute cost.
-    BidKV\,(yellow) lands firmly in the ideal zone ($\bar{r}\!=\!0.96$,
-    $\bar{c}\!=\!0.64$): near-maximum KV recovery at lower cost than
-    Largest-first — not a compromise, but a dominant trade-off point.}
+    LIFO\,(red) sits in the lower-left ($\bar{r}\!=\!0.21$, $\bar{c}\!=\!0.13$) — low KV recovery,
+    wasting each preemption opportunity.
+    PE-SJF\,(blue) uses SJF admission yet keeps LIFO victim selection; it clusters near LIFO
+    ($\bar{r}\!=\!0.16$, $\bar{c}\!=\!0.07$), confirming that admission policy alone
+    cannot fix victim selection.
+    BidKV\,(yellow) breaks free: near-maximum KV recovery at moderate cost
+    ($\bar{r}\!=\!0.98$, $\bar{c}\!=\!0.56$), dominating both alternatives.}
   \label{fig:intro:lifo}
 \end{subfigure}
 \caption{\textbf{The victim-selection problem under KV pressure.}
   (a)~Reclamation opportunity spans orders of magnitude at every pressure event.
   (b)~Victim-selection trade-off space: X\,=\,recompute cost ($c$),
   Y\,=\,KV footprint rank.
-  LIFO wastes KV capacity ($\bar{r}\!=\!0.21$); Largest-first maximises KV but
-  ignores cost ($\bar{c}\!=\!0.74$); BidKV occupies the ideal upper-left zone
-  ($\bar{r}\!=\!0.96$, $\bar{c}\!=\!0.64$), dominating both baselines.}
+  LIFO wastes KV capacity ($\bar{r}\!=\!0.21$); PE-SJF changes admission order yet
+  its LIFO victim selection stays equally adrift ($\bar{r}\!=\!0.16$); BidKV occupies
+  the ideal upper-left zone ($\bar{r}\!=\!0.98$, $\bar{c}\!=\!0.56$), dominating both baselines.}
 \label{fig:intro_evidence}
 \end{figure*}
 
