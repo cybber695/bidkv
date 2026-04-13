@@ -4,14 +4,18 @@
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{figures/bidkv.pdf}
-\caption{\bidkv scheduling overview.  When KV usage exceeds the
-pressure threshold~(\ding{172}), the scheduling layer
-activates~(\ding{173}): the pressure detector triggers bid generation,
-which computes disruption cost~$\qualdelta$ for each running request and
-ranks candidates by utility $U = r/(\qualdelta + \varepsilon)$
-(\ding{174}).  The solver selects the victim~(\ding{175}) and the
-framework adapter preempts the chosen request, freeing its KV
-blocks~(\ding{177}).  The preempted request re-enters the waiting queue
-for later recomputation~(\ding{177}).}
+\caption{\bidkv scheduling overview.  Two asynchronous processes govern
+victim selection.  \emph{Background ranking}~(blue, every ${\sim}3$\,s):
+the adapter collects per-request lifecycle state from the running
+batch~(A1), computes a disruption estimate~$\qualdelta$ and ranks all
+candidates by reclamation utility~$U$~(A2), and writes the ordering to a
+cached priority map~(A3).  \emph{Gated reclamation}~(red, every scheduling
+tick): the adapter reads KV utilization~(B1); when usage ${\geq}95\%$, it
+looks up the cached ranking~(B2) and reorders the running queue so that
+the highest-$U$ candidate sits at the tail~(B3).  The framework's native
+LIFO eviction removes the tail request, releases its KV blocks, and
+requeues it with $P{+}{+}$~(B4), raising $\qualdelta$ in future cycles
+to discourage repeated re-eviction.  Below the pressure threshold no
+reorder occurs and default LIFO governs.}
 \label{fig:architecture}
 \end{figure}

@@ -1,0 +1,283 @@
+\documentclass[conference]{IEEEtran}
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage{tagging}
+
+\usepackage{sc26repro}
+
+%\usetag{explanation}
+%\usetag{example}
+
+\begin{document}
+
+\twocolumn[%
+{\begin{center}
+\Huge
+Appendix: Artifact Description/Artifact Evaluation
+\end{center}}
+]
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%  AD Appendix
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\appendixAD
+
+\section{Overview of Contributions and Artifacts}
+
+\subsection{Paper's Main Contributions}
+
+\begin{description}
+\item[$C_1$] \textbf{Bid-based reclamation interface.}
+  A structured per-request bid abstraction that surfaces recoverable capacity
+  and estimated disruption cost to the runtime scheduler, replacing implicit
+  victim-ordering rules with an explicit decision interface.
+
+\item[$C_2$] \textbf{Decoupled scoring-to-selection architecture.}
+  Separation of request-level disruption estimation from coordinated
+  cross-request victim selection through a uniform cost--capacity bid
+  interface, so that the selection algorithm is independent of how
+  disruption estimates are produced.
+
+\item[$C_3$] \textbf{Portable runtime integration.}
+  A non-invasive scheduling layer with a \texttt{FrameworkAdapter} abstraction
+  demonstrated on vLLM~0.17.1 and SGLang, reusing each framework's native
+  reclamation and recovery mechanisms without source-code modification.
+
+\item[$C_4$] \textbf{Structured evaluation under controlled conditions.}
+  Evaluation of five strategies varying across four scheduling dimensions
+  (admission ordering, running-queue reordering, victim selection, proactive
+  reclamation) under frozen request traces and calibrated arrival rates,
+  enabling structured attribution across these co-varying dimensions.
+\end{description}
+
+
+\subsection{Computational Artifacts}
+
+\begin{description}
+\item[$A_1$] BidKV source code and experiment framework:\\
+  \url{https://github.com/[anonymized]/bidkv}
+\end{description}
+
+\begin{center}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{@{}rll@{}}
+\toprule
+Artifact ID & Contributions & Related Paper Elements \\
+            & Supported     & \\
+\midrule
+$A_1$  & $C_1, C_2, C_3, C_4$ & Table~I (strategy differentiation) \\
+       &                      & Table~II (rate sensitivity, vLLM) \\
+       &                      & Table~III (long-context results) \\
+       &                      & Table~IV (SGLang portability) \\
+       &                      & Table~V (robustness sensitivity) \\
+       &                      & Figure~1 (motivation) \\
+       &                      & Figure~2 (system architecture) \\
+       &                      & Figure~3 (algorithm) \\
+       &                      & Figure~4 (reclamation analysis) \\
+       &                      & Figure~5 (victim-selection tradeoff) \\
+\bottomrule
+\end{tabular}%
+}
+\end{center}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Artifact Identification}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newartifact
+
+\artrel
+
+$A_1$ comprises (i)~the BidKV Python package
+(\texttt{src/bidkv/}), (ii)~vLLM and SGLang adapter layers
+(\texttt{src/bidkv/adapters/}), (iii)~five baseline strategy
+implementations (\texttt{src/bidkv/baselines/}), and (iv)~the
+experiment runner, trace-freeze utilities, and analysis scripts
+(\texttt{src/bidkv/experiments/}).
+Together these components instantiate $C_1$--$C_3$ and drive all
+measurements described in $C_4$.
+
+\artexp
+
+Among all five vLLM strategies at rate~3.8\,req/s (mixed workload), BidKV
+should achieve the best P95 TTFT ($\approx$631\,ms) and near-best 300\,ms
+SLO attainment ($\approx$83.2\,\%, second only to Static-Random at 84.1\,\%)
+(Table~II).
+Across all three arrival rates (2.0, 3.8, and 5.7\,req/s), BidKV should
+rank first or second on both P95 TTFT and SLO attainment (Table~II, Figure~4).
+On the long-context workload at peak load (rate~0.70\,req/s), BidKV should
+achieve the lowest P95 TTFT among all five strategies
+($\approx$30{,}143\,ms; Table~III).
+SGLang portability results (Table~IV) are pending and will be included in the
+camera-ready version.
+These results substantiate $C_1$--$C_4$: the bid interface and
+utility-ranked selection produce measurably better admission responsiveness
+across two arrival-rate regimes and two workload types.
+
+\arttime
+
+\begin{itemize}
+  \item \textbf{Artifact Setup:} 20--30\,min
+    (conda environment creation, package installation, model download if not
+    cached, trace generation).
+  \item \textbf{Artifact Execution:}
+    vLLM full matrix (5 strategies $\times$ 2 workloads $\times$ 3 rates
+    $\times$ 3 runs = 90 experiment runs): $\approx$ 20--28\,h
+    (mixed-workload runs average 5--8\,min each; long-context runs average
+    20--25\,min each; server startup adds $\approx$4\,min per run).
+    SGLang portability slice: timing pending (results not yet included in
+    this artifact version).
+  \item \textbf{Artifact Analysis:} 5--10\,min
+    (single analysis script invocation per result directory).
+\end{itemize}
+
+\artin
+
+\artinpart{Hardware}
+
+\begin{itemize}
+  \item Single NVIDIA RTX A6000 GPU (48\,GiB VRAM); CUDA~12.5.
+  \item $\geq$64\,GiB system RAM; $\geq$8 CPU cores recommended.
+  \item $\geq$40\,GB free disk space (model weights, result files).
+  \item No special interconnect is required; single-node, single-GPU only.
+\end{itemize}
+
+\artinpart{Software}
+
+\begin{itemize}
+  \item Python~3.10 or 3.11
+  \item conda (Miniconda/Anaconda) for environment management
+  \item vLLM~0.17.1 (\url{https://github.com/vllm-project/vllm})
+  \item SGLang (version matching \texttt{requirements.txt};\\
+    \url{https://github.com/sgl-project/sglang})
+  \item BidKV package (this artifact; zero external dependencies beyond
+    vLLM/SGLang, which are runtime-only imports in the adapter layer)
+\end{itemize}
+
+\artinpart{Datasets / Inputs}
+
+The experiment uses the ShareGPT Vicuna unfiltered dataset
+(\url{https://huggingface.co/datasets/anon8231489123/}).
+Request traces are deterministically generated from this dataset using
+seed~42 and frozen by SHA-256 checksums.
+The trace-freeze script is included in the artifact:
+
+\begingroup\footnotesize\begin{verbatim}
+python -m bidkv.experiments.vllm.freeze_traces \
+    --mode formal --use-frozen-rates \
+    --output-dir experiments/vllm/traces/
+\end{verbatim}
+\endgroup
+
+The model weights are Llama-3.1-8B-Instruct
+(\url{https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct}).
+If a local HuggingFace cache is available, set
+\texttt{HF\_HUB\_OFFLINE=1} and \texttt{TRANSFORMERS\_OFFLINE=1}.
+
+\artinpart{Installation and Deployment}
+
+\begingroup\footnotesize\begin{verbatim}
+# 1. Create conda environment
+conda create -n bidkv python=3.10 -y
+conda activate bidkv
+
+# 2. Install vLLM and SGLang
+pip install vllm==0.17.1
+pip install sglang[all]
+
+# 3. Install BidKV (editable)
+cd /path/to/bidkv
+pip install -e ".[dev]"
+
+# 4. Generate frozen traces (once)
+python -m bidkv.experiments.vllm.freeze_traces \
+    --mode formal --use-frozen-rates \
+    --output-dir experiments/vllm/traces/
+\end{verbatim}
+\endgroup
+
+No custom compiler is required.
+All components are pure Python.
+
+\artcomp
+
+\textbf{Workflow tasks and dependencies:}
+
+\begin{itemize}
+  \item $T_1$ \textbf{Trace generation.}
+    \texttt{freeze\_traces.py} samples 1\,000 requests (mixed) and 500
+    requests (long-context) from ShareGPT with seed~42 and writes
+    SHA-256-verified JSON trace files to \texttt{experiments/vllm/traces/}.
+
+  \item $T_2$ \textbf{vLLM experiment execution.}
+    \texttt{runner.py} iterates over 5 strategies $\times$ 2 workloads
+    $\times$ 3 arrival rates $\times$ 3 runs.
+    For each strategy it starts a vLLM server (with BidKV adapter injected
+    via plugin for non-PE strategies), replays the frozen trace using a
+    Poisson open-loop arrival model, collects per-request TTFT and
+    completion-token counts, and writes one JSON result file per run.
+    Fixed server parameters: \texttt{--gpu-memory-utilization~0.5},
+    \texttt{--num-gpu-blocks-override~600}, \texttt{--max-num-seqs~32},
+    \texttt{--block-size~16}, \texttt{--max-model-len~8192},
+    \texttt{--enforce-eager}, \texttt{--disable-frontend-multiprocessing},
+    \texttt{--no-enable-prefix-caching}.
+
+  \item $T_3$ \textbf{SGLang portability execution (pending).}
+    Uses the SGLang runner (\texttt{experiments/sglang/runner.py}) with
+    3 strategies (BidKV, Slack-Aware, vanilla SGLang) $\times$
+    rate~3.8\,req/s $\times$ 3 runs.
+    Results for Table~IV are not yet included in this artifact version.
+
+  \item $T_4$ \textbf{Analysis.}
+    \texttt{analysis.py} reads all JSON result files, computes P95 TTFT,
+    TPOT P95, throughput, and SLO attainment (from raw per-request data;
+    P95 and SLO are not pre-computed), and produces tables and figures.
+
+\end{itemize}
+
+\textbf{Dependencies:} $T_1 \rightarrow T_2 \rightarrow T_4$;
+$T_1 \rightarrow T_3 \rightarrow T_4$.
+$T_2$ and $T_3$ are independent and can run in parallel if GPUs are available.
+
+\textbf{Experimental parameters:}
+\begin{itemize}
+  \item Mixed workload: 1\,000 requests, rates $\{2.0, 3.8, 5.7\}$\,req/s,
+    3 runs per (strategy, rate) combination.
+  \item Long-context workload: 500 requests,
+    rates $\{0.35, 0.5, 0.7\}$\,req/s, 3 runs per combination.
+  \item SGLang portability ($T_3$, pending): mixed workload,
+    rate~3.8\,req/s, 3 runs per strategy.
+  \item KV capacity fixed at 600 blocks (9\,600 tokens) to induce
+    sustained KV pressure; this is the critical parameter for
+    strategy differentiation and must not be changed.
+  \item Arrival process: Poisson (open-loop); seed~42 for trace replay.
+\end{itemize}
+
+\artout
+
+Raw results are stored as JSON files with naming convention
+\texttt{strategy\_\_workload\_\_rate\{r\}\_\_r\{i\}.json}
+in the designated result directory.
+Each file contains per-request TTFT, total latency, completion-token count,
+and adapter-level reclamation metrics.
+
+Analysis scripts in \texttt{experiments/vllm/} and
+\texttt{experiments/sglang/} read these files and compute P95/P50
+TTFT, TPOT P95, throughput, and SLO attainment from raw
+per-request data (P95 and SLO are not pre-computed in the JSON).
+Outputs are CSV tables (Table~II--III) and PDF figures
+(Figures~4--5).
+The scripts handle the legacy field-name difference between older
+result batches (\texttt{total\_compressions}) and newer ones
+(\texttt{total\_evictions}).
+
+\end{document}

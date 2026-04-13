@@ -1,23 +1,24 @@
 \begin{table*}[t]
 \centering
-\caption{Main comparison on vLLM (Llama-3.1-8B-Instruct, A6000, mixed workload,
-  rate\,=\,3.8\,req/s, gpu-mem-util\,=\,0.5, 600~KV blocks).
-  Best result in \textbf{bold}; second-best \underline{underlined}.
-  Mean of 3~runs.}
+\caption{Main results (vLLM, mixed workload, rate\,=\,3.8\,req/s).
+  \textbf{Bold} = best; \underline{underlined} = second-best. Mean of 3~runs.}
 \label{tab:main}
 \small
 \begin{tabular}{@{}l c c c c@{}}
 \toprule
 \textbf{Strategy}
-  & \textbf{SLO}     & \textbf{TTFT}    & \textbf{Throughput}  & \textbf{TPOT} \\
-  & \textbf{(300ms)} & \textbf{P95}     & (req/s)              & \textbf{P95} \\
-  & (\%)             & (ms)             &                      & (ms) \\
+  & \textbf{Throughput}  & \textbf{SLO}     & \textbf{TTFT}
+  & \textbf{TPOT} \\
+  & (req/s)  & \textbf{(300ms)} & \textbf{P95}
+  & \textbf{P95} \\
+  &           & (\%)             & (ms)
+  & (ms) \\
 \midrule
-PE (default)             & 68.4              & 6769              & \underline{3.48}     & \underline{97.0} \\
-PE-SJF                   & 79.6              & \underline{666}   & 3.06              & 153.5 \\
-Static-Random            & \textbf{84.1}     & 1216              & \textbf{3.57}     & \textbf{90.9} \\
-Largest-First            & 79.9              & 677               & 3.28              & 112.9 \\
-\textbf{BidKV}           & \underline{83.2}  & \textbf{631}      & 3.42              & 107.2 \\
+PE (default)             & \underline{3.48}     & 68.4              & 6769              & \underline{97.0} \\
+PE-SJF                   & 3.06              & 79.6              & \underline{666}   & 153.5 \\
+Static-Random            & \textbf{3.57}     & \textbf{84.1}     & 1216              & \textbf{90.9} \\
+Largest-First            & 3.28              & 79.9              & 677               & 112.9 \\
+\textbf{BidKV}           & 3.42              & \underline{83.2}  & \textbf{631}      & 107.2 \\
 \bottomrule
 \end{tabular}
 \end{table*}

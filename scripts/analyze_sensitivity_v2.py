@@ -6,7 +6,7 @@ Reads results from results/vllm_sensitivity_v2/ and reports:
   - Per-axis: span (max-min) and robustness classification
 
 Usage:
-    conda run -n sagellm python scripts/analyze_sensitivity_v2.py
+    python scripts/analyze_sensitivity_v2.py
 """
 from __future__ import annotations
 

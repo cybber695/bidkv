@@ -78,6 +78,9 @@ results/smoke_v21/
 # Agent prompts — now tracked (frozen metric decision)
 # docs/prompts/
 
+# SC26 AE template skeleton (generic boilerplate, not project code)
+sc26-repro-main/
+
 # Paper build outputs
 paper/*.pdf
 paper/*.out

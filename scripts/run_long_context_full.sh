@@ -6,7 +6,8 @@
 
 set -e
 
-cd /home/cyb/bidkv
+BIDKV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$BIDKV_DIR"
 
 echo "=== BidKV Long-Context Full Experiment ==="
 echo "Start time: $(date)"
@@ -16,7 +17,7 @@ echo ""
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 
-conda run -n sagellm python -m bidkv.experiments.vllm.runner \
+${PYTHON:-python3} -m bidkv.experiments.vllm.runner \
   --strategies "preempt-evict,preempt-evict-sjf,static-random,largest-first,uniform,slack-aware,bidkv" \
   --workloads "long_context" \
   --long-rates "0.35,0.5,0.7" \

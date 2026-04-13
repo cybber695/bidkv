@@ -5,7 +5,7 @@ with 50% request count (seed=99) to find rate_low / rate_mid / rate_high for eac
 
 Usage
 -----
-conda run -n sagellm python -m bidkv.experiments.vllm.pilot_calibration \
+python -m bidkv.experiments.vllm.pilot_calibration \
     --model meta-llama/Llama-3.1-8B-Instruct \
     --gpu-memory-utilization 0.85
 """

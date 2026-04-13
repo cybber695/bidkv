@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from bidkv.experiments.common.audit import AuditLogger
+from bidkv.experiments.common.model import DEFAULT_MODEL_NAME
 from bidkv.experiments.common.report import RunResult
 from bidkv.experiments.common.trace import FrozenTrace
 
@@ -50,7 +51,7 @@ class ExperimentConfig:
     num_runs: int = 3
     concurrency_levels: tuple[int, ...] = (8, 16, 32)
     output_dir: str = "results/"
-    model_name: str = "meta-llama/Llama-2-7b-chat-hf"
+    model_name: str = DEFAULT_MODEL_NAME
     max_total_tokens: int = 16384
     slo_ttft_ms: float = 500.0
     trace_dir: str = "traces/"

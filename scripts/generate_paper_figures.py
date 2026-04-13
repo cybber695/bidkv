@@ -496,21 +496,12 @@ def generate_fig1_panel_b_scatter() -> None:
     # ── Axis labels and ticks ─────────────────────────────────────────────────
     ax.set_xlabel("Completion Ratio $c$ of Selected Victim\n(0 = newest, cheapest to recompute)", labelpad=3)
     ax.set_ylabel("KV-Footprint Rank of Selected Victim\n(0 = smallest, 1 = largest KV freed)", labelpad=3)
-    ax.set_title("(b) Victim-Selection Trade-off Space  ($n$=" + str(n_snaps) + ")", pad=4)
+    ax.set_title("Victim-Selection Trade-off Space  ($n$=" + str(n_snaps) + ")", pad=4)
     ax.set_xlim(-0.05, 1.08)
     ax.set_ylim(-0.10, 1.12)
     ax.set_xticks([0.0, 0.25, 0.5, 0.75, 1.0])
     ax.set_yticks([0.0, 0.25, 0.5, 0.75, 1.0])
     ax.grid(True, linestyle=":", alpha=0.30)
-
-    # ── Diagonal direction arrow (lower-right → upper-left = improvement) ────
-    ax.annotate("",
-        xy=(0.04, 0.88), xycoords="data",
-        xytext=(0.30, 0.55), textcoords="data",
-        arrowprops=dict(arrowstyle="-|>", color="#555555", lw=1.0),
-    )
-    ax.text(0.175, 0.69, "better\ntrade-off", ha="center", va="center",
-            fontsize=5.0, color="#555555", style="italic", rotation=-42)
 
     fig.tight_layout(pad=0.5)
     save_fig(fig, "fig1_intro_evidence_panel_b")

@@ -16,8 +16,9 @@ set -euo pipefail
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 
+BIDKV_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RESULTS_DIR="results/vllm_sensitivity_v2"
-cd /home/cyb/bidkv
+cd "$BIDKV_DIR"
 
 mkdir -p "$RESULTS_DIR"
 
@@ -51,7 +52,7 @@ run_variant() {
     local VARIANT_DIR="${RESULTS_DIR}/${LABEL}"
     mkdir -p "$VARIANT_DIR"
 
-    conda run -n sagellm python -m bidkv.experiments.vllm.runner \
+    ${PYTHON:-python3} -m bidkv.experiments.vllm.runner \
         --strategies "bidkv" \
         --workloads "mixed" \
         --mixed-rates "3.8" \

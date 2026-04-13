@@ -22,7 +22,7 @@ cd "$REPO_ROOT"
 export PYTHONPATH="${REPO_ROOT}/src:${PYTHONPATH:-}"
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
-export BIDKV_MODEL="/home/models/Llama-3.1-8B-Instruct"
+export BIDKV_MODEL="${BIDKV_MODEL:-meta-llama/Llama-3.1-8B-Instruct}"
 export no_proxy="127.0.0.1,localhost"
 export NO_PROXY="127.0.0.1,localhost"
 export CUDA_HOME=/usr/local/cuda-12.8
