@@ -21,9 +21,9 @@ from bidkv.experiments.sglang.config import (
     ALL_STRATEGIES,
     ALL_WORKLOADS,
     DEFAULT_REQUEST_RATES,
+    EXTENDED_STRATEGIES,
     STRATEGY_BIDKV,
     STRATEGY_SGLANG_DEFAULT,
-    STRATEGY_SLACK_AWARE,
     SGLangExperimentConfig,
     SGLangServerConfig,
     SLOConfig,
@@ -123,7 +123,7 @@ class TestStrategyConstants:
     def test_all_strategies_tuple(self) -> None:
         assert STRATEGY_SGLANG_DEFAULT in ALL_STRATEGIES
         assert STRATEGY_BIDKV in ALL_STRATEGIES
-        assert STRATEGY_SLACK_AWARE in ALL_STRATEGIES
+        assert len(ALL_STRATEGIES) == 3
 
     def test_strategy_count(self) -> None:
         assert len(ALL_STRATEGIES) == 3
@@ -297,7 +297,7 @@ class TestWriteAuditEntry:
                 audit_path,
                 candidate_count=i + 1,
                 candidate_request_ids=[f"r{j}" for j in range(i + 1)],
-                strategy="slack_aware",
+                strategy="sglang_default",
                 kv_usage_pct=0.8 + i * 0.05,
             )
         lines = audit_path.read_text().strip().split("\n")

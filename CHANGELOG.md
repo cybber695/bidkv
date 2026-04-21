@@ -4,7 +4,88 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Added
+### Changed
+
+- **死代码系统性清理（第二轮）** (2026-04-09):
+  - **文件删除**：`baselines/random_evict.py`（RandomEvictStrategy，未注册、非 v2.3 冻结策略）、
+    `compression/`（整个目录，Mode B CompressionExecutor Protocol）、
+    `scoring/attention.py`（AttentionWeightScoring，依赖 `output_attentions=True`，FlashAttention 不可用）、
+    `scoring/random_score.py`（RandomScoring，无生产调用者）、
+    `scoring/uniform.py`（UniformScoring scoring class，无生产调用者）、
+    `solver/execution_result.py`（ExecutionResult，仅被已删除的 execute_accepted 使用）
+  - **solver/greedy.py**：删除 `execute_accepted()` 方法（Mode B dead code，无生产调用者）
+  - **公开 API 清理**：`solver/__init__.py`、`scoring/__init__.py`、`__init__.py`
+    移除 `ExecutionResult`、`CompressionExecutor`、`AttentionWeightScoring`、
+    `RandomScoring`、`UniformScoring`
+  - **baselines/registry.py**：删除 `RandomEvictStrategy` 导入和注册（策略数 8→7）
+  - **experiments/sglang/config.py**：删除 `STRATEGY_VANILLA_SGLANG`、`STRATEGY_RANDOM_EVICT`、
+    `SGLANG_NATIVE_ABL_STRATEGIES`、`EXTENDED_STRATEGIES` 常量；`STRATEGY_BASELINE_MAP` 精简为 4 条目；
+    `__post_init__` 使用 `ALL_STRATEGIES` 验证
+  - **adapters/sglang/scheduler_hook.py**：删除 `vanilla_sglang`、`random_evict`、`random-evict`
+    字符串字面量（共 5 处 if/tuple 检查）
+  - **测试清理**：
+    - `test_core.py`：删除 `TestCompressionExecutor`、`TestExecutionResult`、`TestExecuteAccepted`、
+      `TestEndToEndWithActualFreed`、`TestImportExecutionResult`（共 -15 tests）
+    - `test_scoring.py`：删除 `TestAttentionWeightScoring`、`TestUniformScoring`、
+      `TestRandomScoring`、`TestScoringCorrelation`；精简 `TestGenerateBidsCommon` 参数化；
+      删除 `TestBidKVStrategyScorerAgnostic` 中 4 个死方法（共 -50 tests）
+    - `test_vllm_adapter.py`：删除 `uniform_scoring` fixture 和 `UniformScoring` 导入
+    - `test_baselines.py`：更新 `test_create_default_registry` 断言（count 8→7）
+  - 测试总数：433 → 373（-60 死测试）
+
+
+  - **Critical fix**: `adapters/vllm/scheduler_hook.py` 移除已删除的 `truncation_hook` 死导入（runtime `ImportError`）
+  - **SGLang adapter Mode B 完全清除**: 删除 `execute_compression()`, `try_compress()`, `_refresh_bids()`,
+    `_execute_acceptance()`, `_try_compress_baseline()`, `_build_request_states()`, `_execute_baseline_actions()`,
+    `_write_audit()` — 这些方法依赖已删除的 `radix_hook.py`，在 Mode A 中为死代码
+  - **H2OStyleStrategy 向后兼容别名删除**: `baselines/__init__.py` / `bidkv/__init__.py`
+  - **STRATEGY_H2O_STYLE 常量删除**: `experiments/sglang/config.py`（无外部调用者）
+  - **SGLang 测试清理**: 删除 `TestPressureCompression`、`test_shared_tokens_excluded_from_compression`、
+    `test_build_request_states`、`test_baseline_route_skips_bidkv_pipeline`、
+    Mode B `try_compress`/`execute_compression` 测试（共 -8 tests）
+  - 测试总数：441 → 433（-8 Mode B SGLang 测试）
+
+- **Mode B dead code removal from `adapters/vllm/adapter.py`** (2026-04-09):
+  - 删除 `execute_compression()`, `execute_abort()`, `_execute_tail_truncation()`,
+    `_sync_model_runner_block_table()` — Mode B Token-level truncation 入口，
+    在 Mode A 实验中从未被调用，`truncation_hook.py` 已于上一 session 删除
+  - 删除 `try_compress()`, `_try_compress_baseline()`, `_build_request_states()`,
+    `_execute_baseline_actions()`, `try_compress_for_request()`, `_refresh_bids()`,
+    `_execute_acceptance()` — Mode B 压缩管道，vLLM Mode A 不使用
+  - 删除 `_get_block_size()` — 仅被上述已删除方法调用
+  - 删除 `DEFAULT_COMPRESSION_LEVELS` 常量和 `compression_levels` 构造函数参数
+  - 更新模块 docstring 核心职责（4 层，移除"Compression 执行"）
+  - 删除 `from bidkv.scoring.bid_builder import build_bids` / `CompressionAction` / `BidAcceptance` 等孤立导入
+  - 文件从 936 行缩减至 372 行
+
+- **`adapters/base.py` ABC 更新** (2026-04-09):
+  - 删除 `execute_compression()` 抽象方法（SGLang adapter 的 execute_compression 已非 ABC 要求）
+  - 更新模块 docstring 职责边界（5 层 → 4 层）
+
+- **Mode B 测试清理** (2026-04-09):
+  - `tests/test_vllm_adapter.py`：删除 `TestCompressionExecution`, `TestTruncationRouting`,
+    `TestTailTruncation`, `TestTruncationHook` 测试类（共 ~526 行）；
+    删除 `test_custom_compression_levels`, `test_inactive_adapter_no_compression`,
+    `test_inactive_adapter_no_execute`, `TestBidKVPipeline` 类；
+    更新 `test_kill_switch_stops_all_operations` 移除 Mode B 断言
+  - `tests/test_sglang_adapter.py`：删除 `TestRadixHook` 类（引用已删除的 `radix_hook.py`）
+  - 测试总数：471 → 441（-30）
+
+- **Sensitivity analysis for BidKV v8 formula parameters** (2026-04-07):
+  - `bidkv_strategy.py`：`w_c=0.5` / `w_s=0.3` 硬编码改为读取环境变量
+    `BIDKV_COMPLETION_WEIGHT` / `BIDKV_STARVATION_WEIGHT`（默认值不变）
+  - `scheduler_hook.py`：KV gate `0.95` 改为读取环境变量 `BIDKV_KV_GATE`（默认值不变）
+  - 新增 `scripts/run_sensitivity_v2.sh`：10 variants × 3 runs = 30 runs
+    (completion_weight axis: 0.25/0.5/1.0/2.0; starvation_weight: 0.1/0.3/0.6/1.0; kv_gate: 0.85/0.90/0.95/0.98)
+  - 新增 `scripts/analyze_sensitivity_v2.py`：span 分析 + 鲁棒性分类
+  - 结果（rate=3.8, mixed, 3 runs/variant，保存于 `results/vllm_sensitivity_v2/`）：
+    | Axis | SLO span | TTFT span | Classification |
+    |---|---|---|---|
+    | completion_weight | 1.9pp | 9.2% | ROBUST |
+    | starvation_weight | 1.6pp | 3.2% | ROBUST |
+    | kv_gate | 1.4pp | 3.1% | ROBUST |
+    Overall: SLO span 1.9pp, TTFT P95 span 9.2% → **ROBUST**
+    Default sanity check: TTFT P95=633ms ✓ (expected 550–750ms)
 
 - **BidKV radix-tree-aware victim selection for SGLang** (2026-04-08):
   - `baselines/base.py`: `RequestState` 新增 `private_tokens: int = 0` 字段，

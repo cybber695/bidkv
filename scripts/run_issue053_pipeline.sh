@@ -12,12 +12,12 @@
 #   4. vLLM + SGLang analysis
 #
 # Usage:
-#   conda run -n sagellm bash scripts/run_issue053_pipeline.sh
+#   bash scripts/run_issue053_pipeline.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-CONDA_RUN=(conda run -n sagellm python)
+CONDA_RUN=(${PYTHON:-python3})
 MODEL="${BIDKV_MODEL:-meta-llama/Llama-3.1-8B-Instruct}"
 TRACES="results/formal/traces"
 

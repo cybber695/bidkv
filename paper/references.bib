@@ -10,534 +10,771 @@
 % ----------------------------------------------------------
 
 @inproceedings{Kwon2023,
-  author    = {Kwon, Woosuk and Li, Zhuohan and Zhuang, Siyuan and Sheng, Ying and Zheng, Lianmin and Yu, Cody Hao and Gonzalez, Joseph and Zhang, Hao and Stoica, Ion},
-  title     = {Efficient Memory Management for Large Language Model Serving with PagedAttention},
+  author    = {Woosuk Kwon and
+               Zhuohan Li and
+               Siyuan Zhuang and
+               Ying Sheng and
+               Lianmin Zheng and
+               Cody Hao Yu and
+               Joseph Gonzalez and
+               Hao Zhang and
+               Ion Stoica},
+  editor    = {Jason Flinn and
+               Margo I. Seltzer and
+               Peter Druschel and
+               Antoine Kaufmann and
+               Jonathan Mace},
+  title     = {Efficient Memory Management for Large Language Model Serving with
+               PagedAttention},
+  booktitle = {Proceedings of the 29th Symposium on Operating Systems Principles,
+               {SOSP} 2023, Koblenz, Germany, October 23-26, 2023},
+  pages     = {611--626},
+  publisher = {{ACM}},
   year      = {2023},
-  isbn      = {9798400702297},
-  publisher = {Association for Computing Machinery},
-  address   = {New York, NY, USA},
   url       = {https://doi.org/10.1145/3600006.3613165},
   doi       = {10.1145/3600006.3613165},
-  booktitle = {Proceedings of the 29th Symposium on Operating Systems Principles},
-  pages     = {611–626},
-  numpages  = {16},
-  location  = {Koblenz, Germany},
-  series    = {SOSP '23}
+  timestamp = {Tue, 11 Feb 2025 11:42:30 +0100},
+  biburl    = {https://dblp.org/rec/conf/sosp/KwonLZ0ZY0ZS23.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
+
 
 @inproceedings{Yu2022,
-  author    = {Gyeong-In Yu and Joo Seong Jeong and Geon-Woo Kim and Soojeong Kim and Byung-Gon Chun},
-  title     = {Orca: A Distributed Serving System for {Transformer}-Based Generative Models},
-  booktitle = {Proceedings of the 16th USENIX Symposium on Operating Systems Design and Implementation (OSDI)},
+  author    = {Gyeong{-}In Yu and
+               Joo Seong Jeong and
+               Geon{-}Woo Kim and
+               Soojeong Kim and
+               Byung{-}Gon Chun},
+  editor    = {Marcos K. Aguilera and
+               Hakim Weatherspoon},
+  title     = {Orca: {A} Distributed Serving System for Transformer-Based Generative
+               Models},
+  booktitle = {16th {USENIX} Symposium on Operating Systems Design and Implementation,
+               {OSDI} 2022, Carlsbad, CA, USA, July 11-13, 2022},
+  pages     = {521--538},
+  publisher = {{USENIX} Association},
   year      = {2022},
-  pages     = {521--538}
+  url       = {https://www.usenix.org/conference/osdi22/presentation/yu},
+  timestamp = {Tue, 11 Oct 2022 16:51:12 +0200},
+  biburl    = {https://dblp.org/rec/conf/osdi/YuJKKC22.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
+
 
 @inproceedings{Zheng2024sglang,
-  author    = {Lianmin Zheng and Liangsheng Yin and Zhiqiang Xie and Chuyue Sun and Jeff Huang and others},
-  title     = {{SGLang}: Efficient Execution of Structured Language Model Programs},
-  booktitle = {Advances in Neural Information Processing Systems 37 (NeurIPS 2024)},
-  year      = {2024}
+  author    = {Lianmin Zheng and
+               Liangsheng Yin and
+               Zhiqiang Xie and
+               Chuyue Sun and
+               Jeff Huang and
+               Cody Hao Yu and
+               Shiyi Cao and
+               Christos Kozyrakis and
+               Ion Stoica and
+               Joseph E. Gonzalez and
+               Clark W. Barrett and
+               Ying Sheng},
+  editor    = {Amir Globersons and
+               Lester Mackey and
+               Danielle Belgrave and
+               Angela Fan and
+               Ulrich Paquet and
+               Jakub M. Tomczak and
+               Cheng Zhang},
+  title     = {SGLang: Efficient Execution of Structured Language Model Programs},
+  booktitle = {Advances in Neural Information Processing Systems 38: Annual Conference
+               on Neural Information Processing Systems 2024, NeurIPS 2024, Vancouver,
+               BC, Canada, December 10 - 15, 2024},
+  year      = {2024},
+  url       = {http://papers.nips.cc/paper\_files/paper/2024/hash/724be4472168f31ba1c9ac630f15dec8-Abstract-Conference.html},
+  timestamp = {Thu, 13 Feb 2025 16:56:43 +0100},
+  biburl    = {https://dblp.org/rec/conf/nips/ZhengYXS0YCKSGB24.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
 
-@misc{Agrawal2023sarathi,
-  title         = {SARATHI: Efficient LLM Inference by Piggybacking Decodes with Chunked Prefills},
-  author        = {Amey Agrawal and Ashish Panwar and Jayashree Mohan and Nipun Kwatra and Bhargav S. Gulavani and Ramachandran Ramjee},
-  year          = {2023},
-  eprint        = {2308.16369},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.LG},
-  url           = {https://arxiv.org/abs/2308.16369}
-}
 
 @inproceedings{Agrawal2024sarathiserve,
-  author    = {Amey Agrawal and Nitin Kedia and Ashish Panwar and Jayashree Mohan and Nipun Kwatra and Bhargav S. Gulavani and Alexey Tumanov and Ramachandran Ramjee},
-  title     = {Taming Throughput-Latency Tradeoff in {LLM} Inference with {Sarathi-Serve}},
-  booktitle = {Proceedings of the 18th USENIX Symposium on Operating Systems Design and Implementation (OSDI)},
-  year      = {2024}
+  author    = {Amey Agrawal and
+               Nitin Kedia and
+               Ashish Panwar and
+               Jayashree Mohan and
+               Nipun Kwatra and
+               Bhargav S. Gulavani and
+               Alexey Tumanov and
+               Ramachandran Ramjee},
+  editor    = {Ada Gavrilovska and
+               Douglas B. Terry},
+  title     = {Taming Throughput-Latency Tradeoff in {LLM} Inference with Sarathi-Serve},
+  booktitle = {18th {USENIX} Symposium on Operating Systems Design and Implementation,
+               {OSDI} 2024, Santa Clara, CA, USA, July 10-12, 2024},
+  pages     = {117--134},
+  publisher = {{USENIX} Association},
+  year      = {2024},
+  url       = {https://www.usenix.org/conference/osdi24/presentation/agrawal},
+  timestamp = {Tue, 16 Jul 2024 22:11:07 +0200},
+  biburl    = {https://dblp.org/rec/conf/osdi/AgrawalKPMKGTR24.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
+
+
 
 @inproceedings{Zhong2024,
-  author    = {Yinmin Zhong and Shengyu Liu and Junda Chen and Jianbo Hu and Yibo Zhu and Xuanzhe Liu and Xin Jin and Hao Zhang},
-  title     = {{DistServe}: Disaggregating Prefill and Decoding for Goodput-optimized Large Language Model Serving},
-  booktitle = {Proceedings of the 18th USENIX Symposium on Operating Systems Design and Implementation (OSDI)},
-  year      = {2024}
+  author    = {Yinmin Zhong and
+               Shengyu Liu and
+               Junda Chen and
+               Jianbo Hu and
+               Yibo Zhu and
+               Xuanzhe Liu and
+               Xin Jin and
+               Hao Zhang},
+  editor    = {Ada Gavrilovska and
+               Douglas B. Terry},
+  title     = {DistServe: Disaggregating Prefill and Decoding for Goodput-optimized
+               Large Language Model Serving},
+  booktitle = {18th {USENIX} Symposium on Operating Systems Design and Implementation,
+               {OSDI} 2024, Santa Clara, CA, USA, July 10-12, 2024},
+  pages     = {193--210},
+  publisher = {{USENIX} Association},
+  year      = {2024},
+  url       = {https://www.usenix.org/conference/osdi24/presentation/zhong-yinmin},
+  timestamp = {Fri, 13 Feb 2026 06:12:48 +0100},
+  biburl    = {https://dblp.org/rec/conf/osdi/ZhongLCHZL0024.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
+
 
 @misc{Sheng2023flexgen,
-  title         = {FlexGen: High-Throughput Generative Inference of Large Language Models with a Single GPU},
-  author        = {Ying Sheng and Lianmin Zheng and Binhang Yuan and Zhuohan Li and Max Ryabinin and others},
-  year          = {2023},
-  eprint        = {2303.06865},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.LG},
-  url           = {https://arxiv.org/abs/2303.06865}
+  author    = {Ying Sheng and
+               Lianmin Zheng and
+               Binhang Yuan and
+               Zhuohan Li and
+               Max Ryabinin and
+               Beidi Chen and
+               Percy Liang and
+               Christopher R{\'{e}} and
+               Ion Stoica and
+               Ce Zhang},
+  editor    = {Andreas Krause and
+               Emma Brunskill and
+               Kyunghyun Cho and
+               Barbara Engelhardt and
+               Sivan Sabato and
+               Jonathan Scarlett},
+  title     = {FlexGen: High-Throughput Generative Inference of Large Language Models
+               with a Single {GPU}},
+  booktitle = {International Conference on Machine Learning, {ICML} 2023, 23-29 July
+               2023, Honolulu, Hawaii, {USA}},
+  series    = {Proceedings of Machine Learning Research},
+  pages     = {31094--31116},
+  publisher = {{PMLR}},
+  year      = {2023},
+  url       = {https://proceedings.mlr.press/v202/sheng23a.html},
+  timestamp = {Tue, 20 Feb 2024 13:40:11 +0100},
+  biburl    = {https://dblp.org/rec/conf/icml/0007ZYLRCLRSZ23.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
+
 
 @inproceedings{Patel2024,
-  author    = {Patel, Pratyush and Choukse, Esha and Zhang, Chaojie and Shah, Aashaka and Goiri, \'{I}\~{n}igo and Maleki, Saeed and Bianchini, Ricardo},
-  title     = {Splitwise: Efficient Generative LLM Inference Using Phase Splitting},
-  year      = {2025},
-  isbn      = {9798350326581},
-  publisher = {IEEE Press},
+  author    = {Pratyush Patel and
+               Esha Choukse and
+               Chaojie Zhang and
+               Aashaka Shah and
+               {\'{I}}{\~{n}}igo Goiri and
+               Saeed Maleki and
+               Ricardo Bianchini},
+  title     = {Splitwise: Efficient Generative {LLM} Inference Using Phase Splitting},
+  booktitle = {51st {ACM/IEEE} Annual International Symposium on Computer Architecture,
+               {ISCA} 2024, Buenos Aires, Argentina, June 29 - July 3, 2024},
+  pages     = {118--132},
+  publisher = {{IEEE}},
+  year      = {2024},
   url       = {https://doi.org/10.1109/ISCA59077.2024.00019},
   doi       = {10.1109/ISCA59077.2024.00019},
-  booktitle = {Proceedings of the 51st Annual International Symposium on Computer Architecture},
-  pages     = {118–132},
-  numpages  = {15},
-  location  = {Buenos Aires, Argentina},
-  series    = {ISCA '24}
+  timestamp = {Fri, 16 Aug 2024 20:48:15 +0200},
+  biburl    = {https://dblp.org/rec/conf/isca/PatelCZSGMB24.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
 
-@inproceedings{Li2023alpaserve,
-  author    = {Zhuohan Li and Lianmin Zheng and Yinmin Zhong and Vincent Liu and Ying Sheng and others},
-  title     = {{AlpaServe}: Statistical Multiplexing with Model Parallelism for Deep Learning Serving},
-  booktitle = {Proceedings of the 17th USENIX Symposium on Operating Systems Design and Implementation (OSDI)},
-  year      = {2023}
-}
 
 @inproceedings{Gujarati2020,
-  author    = {Arpan Gujarati and Reza Karimi and Safya Alzayat and Wei Hao and Antoine Kaufmann and Ymir Vigfusson and Jonathan Mace},
-  title     = {Serving {DNNs} Like Clockwork: Performance Predictability from the Bottom Up},
-  booktitle = {Proceedings of the 14th USENIX Symposium on Operating Systems Design and Implementation (OSDI)},
+  author    = {Arpan Gujarati and
+               Reza Karimi and
+               Safya Alzayat and
+               Wei Hao and
+               Antoine Kaufmann and
+               Ymir Vigfusson and
+               Jonathan Mace},
+  title     = {Serving DNNs like Clockwork: Performance Predictability from the Bottom
+               Up},
+  booktitle = {14th {USENIX} Symposium on Operating Systems Design and Implementation,
+               {OSDI} 2020, Virtual Event, November 4-6, 2020},
+  pages     = {443--462},
+  publisher = {{USENIX} Association},
   year      = {2020},
-  pages     = {443--462}
+  url       = {https://www.usenix.org/conference/osdi20/presentation/gujarati},
+  timestamp = {Tue, 02 Feb 2021 08:05:52 +0100},
+  biburl    = {https://dblp.org/rec/conf/osdi/GujaratiKAHKVM20.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
 
-@inproceedings{Aminabadi2022,
-  author    = {Aminabadi, Reza Yazdani and Rajbhandari, Samyam and Awan, Ammar Ahmad and Li, Cheng and Li, Du and others},
-  booktitle = {SC22: International Conference for High Performance Computing, Networking, Storage and Analysis},
-  title     = {DeepSpeed- Inference: Enabling Efficient Inference of Transformer Models at Unprecedented Scale},
-  year      = {2022},
-  volume    = {},
-  number    = {},
-  pages     = {1-15},
-  keywords  = {Technological innovation;Computational modeling;Aggregates;High performance computing;Graphics processing units;Production;Transformers;Deep Learning;Distributed Inference;Mixture of Experts;PyTorch;DeepSpeed;Transformer models},
-  doi       = {10.1109/SC41404.2022.00051}
-}
 
 @inproceedings{Wu2024loongserve,
-  author    = {Wu, Bingyang and Liu, Shengyu and Zhong, Yinmin and Sun, Peng and Liu, Xuanzhe and Jin, Xin},
-  title     = {LoongServe: Efficiently Serving Long-Context Large Language Models with Elastic Sequence Parallelism},
+  author    = {Bingyang Wu and
+               Shengyu Liu and
+               Yinmin Zhong and
+               Peng Sun and
+               Xuanzhe Liu and
+               Xin Jin},
+  editor    = {Emmett Witchel and
+               Christopher J. Rossbach and
+               Andrea C. Arpaci{-}Dusseau and
+               Kimberly Keeton},
+  title     = {LoongServe: Efficiently Serving Long-Context Large Language Models
+               with Elastic Sequence Parallelism},
+  booktitle = {Proceedings of the {ACM} {SIGOPS} 30th Symposium on Operating Systems
+               Principles, {SOSP} 2024, Austin, TX, USA, November 4-6, 2024},
+  pages     = {640--654},
+  publisher = {{ACM}},
   year      = {2024},
-  isbn      = {9798400712517},
-  publisher = {Association for Computing Machinery},
-  address   = {New York, NY, USA},
   url       = {https://doi.org/10.1145/3694715.3695948},
   doi       = {10.1145/3694715.3695948},
-  abstract  = {The context window of large language models (LLMs) is rapidly increasing, leading to a huge variance in resource usage between different requests as well as between different phases of the same request. Restricted by static parallelism strategies, existing LLM serving systems cannot efficiently utilize the underlying resources to serve variable-length requests in different phases. To address this problem, we propose a new parallelism paradigm, elastic sequence parallelism (ESP), to elastically adapt to the variance across different requests and phases. Based on ESP, we design and build LoongServe, an LLM serving system that (1) improves computation efficiency by elastically adjusting the degree of parallelism in real-time, (2) improves communication efficiency by reducing key-value cache migration overhead and overlapping partial decoding communication with computation, and (3) improves GPU memory efficiency by reducing key-value cache fragmentation across instances. Our evaluation under diverse real-world datasets shows that LoongServe improves the throughput by up to 3.85\texttimes{} compared to chunked prefill and 5.81\texttimes{} compared to prefill-decoding disaggregation.},
-  booktitle = {Proceedings of the ACM SIGOPS 30th Symposium on Operating Systems Principles},
-  pages     = {640–654},
-  numpages  = {15},
-  keywords  = {inference serving, large language models, elastic sequence parallelism},
-  location  = {Austin, TX, USA},
-  series    = {SOSP '24}
+  timestamp = {Sat, 30 Nov 2024 21:10:11 +0100},
+  biburl    = {https://dblp.org/rec/conf/sosp/WuLZ0L024.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
 
-@inproceedings{Stojkovic2025,
-  title     = {DynamoLLM: Designing LLM Inference Clusters for Performance and Energy Efficiency},
-  url       = {http://dx.doi.org/10.1109/HPCA61900.2025.00102},
-  doi       = {10.1109/hpca61900.2025.00102},
-  booktitle = {2025 IEEE International Symposium on High Performance Computer Architecture (HPCA)},
-  publisher = {IEEE},
-  author    = {Stojkovic, Jovan and Zhang, Chaojie and Goiri, Íñigo and Torrellas, Josep and Choukse, Esha},
-  year      = {2025},
-  month     = mar,
-  pages     = {1348–1362}
-}
-
-@inproceedings{Miao2024,
-  author    = {Miao, Xupeng and Oliaro, Gabriele and Zhang, Zhihao and Cheng, Xinhao and Wang, Zeyu and others},
-  title     = {SpecInfer: Accelerating Large Language Model Serving with Tree-based Speculative Inference and Verification},
-  year      = {2024},
-  isbn      = {9798400703867},
-  publisher = {Association for Computing Machinery},
-  address   = {New York, NY, USA},
-  url       = {https://doi.org/10.1145/3620666.3651335},
-  doi       = {10.1145/3620666.3651335},
-  booktitle = {Proceedings of the 29th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 3},
-  pages     = {932–949},
-  numpages  = {18},
-  keywords  = {large language model serving, speculative decoding, token tree verification},
-  location  = {La Jolla, CA, USA},
-  series    = {ASPLOS '24}
-}
 
 @misc{Gim2024,
-  title         = {Prompt Cache: Modular Attention Reuse for Low-Latency Inference},
-  author        = {In Gim and Guojun Chen and Seung-seob Lee and Nikhil Sarda and Anurag Khandelwal and Lin Zhong},
-  year          = {2024},
-  eprint        = {2311.04934},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.CL},
-  url           = {https://arxiv.org/abs/2311.04934}
+  author    = {In Gim and
+               Guojun Chen and
+               Seung{-}Seob Lee and
+               Nikhil Sarda and
+               Anurag Khandelwal and
+               Lin Zhong},
+  editor    = {Phillip B. Gibbons and
+               Gennady Pekhimenko and
+               Christopher De Sa},
+  title     = {Prompt Cache: Modular Attention Reuse for Low-Latency Inference},
+  booktitle = {Proceedings of the Seventh Annual Conference on Machine Learning and
+               Systems, MLSys 2024, Santa Clara, CA, USA, May 13-16, 2024},
+  publisher = {mlsys.org},
+  year      = {2024},
+  url       = {https://proceedings.mlsys.org/paper\_files/paper/2024/hash/a66caa1703fe34705a4368c3014c1966-Abstract-Conference.html},
+  timestamp = {Mon, 01 Jul 2024 17:25:28 +0200},
+  biburl    = {https://dblp.org/rec/conf/mlsys/GimCLSK024.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
 
 % ----------------------------------------------------------
 % KV Cache Compression / Token-Level (15)
 % ----------------------------------------------------------
 
+
 @misc{Zhang2023h2o,
-  title         = {H$_2$O: Heavy-Hitter Oracle for Efficient Generative Inference of Large Language Models},
-  author        = {Zhenyu Zhang and Ying Sheng and Tianyi Zhou and Tianlong Chen and Lianmin Zheng and others},
-  year          = {2023},
-  eprint        = {2306.14048},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.LG},
-  url           = {https://arxiv.org/abs/2306.14048}
+  author    = {Zhenyu Zhang and
+               Ying Sheng and
+               Tianyi Zhou and
+               Tianlong Chen and
+               Lianmin Zheng and
+               Ruisi Cai and
+               Zhao Song and
+               Yuandong Tian and
+               Christopher R{\'{e}} and
+               Clark W. Barrett and
+               Zhangyang Wang and
+               Beidi Chen},
+  editor    = {Alice Oh and
+               Tristan Naumann and
+               Amir Globerson and
+               Kate Saenko and
+               Moritz Hardt and
+               Sergey Levine},
+  title     = {{H2O:} Heavy-Hitter Oracle for Efficient Generative Inference of Large
+               Language Models},
+  booktitle = {Advances in Neural Information Processing Systems 36: Annual Conference
+               on Neural Information Processing Systems 2023, NeurIPS 2023, New Orleans,
+               LA, USA, December 10 - 16, 2023},
+  year      = {2023},
+  url       = {http://papers.nips.cc/paper\_files/paper/2023/hash/6ceefa7b15572587b78ecfcebb2827f8-Abstract-Conference.html},
+  timestamp = {Mon, 12 May 2025 08:59:06 +0200},
+  biburl    = {https://dblp.org/rec/conf/nips/Zhang00CZC0TRBW23.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
+
 
 @misc{Xiao2024,
-  title         = {Efficient Streaming Language Models with Attention Sinks},
-  author        = {Guangxuan Xiao and Yuandong Tian and Beidi Chen and Song Han and Mike Lewis},
-  year          = {2024},
-  eprint        = {2309.17453},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.CL},
-  url           = {https://arxiv.org/abs/2309.17453}
+  author    = {Guangxuan Xiao and
+               Yuandong Tian and
+               Beidi Chen and
+               Song Han and
+               Mike Lewis},
+  title     = {Efficient Streaming Language Models with Attention Sinks},
+  booktitle = {The Twelfth International Conference on Learning Representations,
+               {ICLR} 2024, Vienna, Austria, May 7-11, 2024},
+  publisher = {OpenReview.net},
+  year      = {2024},
+  url       = {https://openreview.net/forum?id=NG7sS51zVF},
+  timestamp = {Mon, 03 Feb 2025 20:38:43 +0100},
+  biburl    = {https://dblp.org/rec/conf/iclr/XiaoTCHL24.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
+
 
 @misc{Liu2023scissorhands,
-  title         = {Scissorhands: Exploiting the Persistence of Importance Hypothesis for LLM KV Cache Compression at Test Time},
-  author        = {Zichang Liu and Aditya Desai and Fangshuo Liao and Weitao Wang and Victor Xie and Zhaozhuo Xu and Anastasios Kyrillidis and Anshumali Shrivastava},
-  year          = {2023},
-  eprint        = {2305.17118},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.LG},
-  url           = {https://arxiv.org/abs/2305.17118}
+  author    = {Zichang Liu and
+               Aditya Desai and
+               Fangshuo Liao and
+               Weitao Wang and
+               Victor Xie and
+               Zhaozhuo Xu and
+               Anastasios Kyrillidis and
+               Anshumali Shrivastava},
+  editor    = {Alice Oh and
+               Tristan Naumann and
+               Amir Globerson and
+               Kate Saenko and
+               Moritz Hardt and
+               Sergey Levine},
+  title     = {Scissorhands: Exploiting the Persistence of Importance Hypothesis
+               for {LLM} {KV} Cache Compression at Test Time},
+  booktitle = {Advances in Neural Information Processing Systems 36: Annual Conference
+               on Neural Information Processing Systems 2023, NeurIPS 2023, New Orleans,
+               LA, USA, December 10 - 16, 2023},
+  year      = {2023},
+  url       = {http://papers.nips.cc/paper\_files/paper/2023/hash/a452a7c6c463e4ae8fbdc614c6e983e6-Abstract-Conference.html},
+  timestamp = {Fri, 01 Mar 2024 16:26:20 +0100},
+  biburl    = {https://dblp.org/rec/conf/nips/LiuDLWXXKS23.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
+
 
 @misc{Li2024snapkv,
-  title         = {SnapKV: LLM Knows What You are Looking for Before Generation},
-  author        = {Yuhong Li and Yingbing Huang and Bowen Yang and Bharat Venkitesh and Acyr Locatelli and Hanchen Ye and Tianle Cai and Patrick Lewis and Deming Chen},
-  year          = {2024},
-  eprint        = {2404.14469},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.CL},
-  url           = {https://arxiv.org/abs/2404.14469}
+  author    = {Yuhong Li and
+               Yingbing Huang and
+               Bowen Yang and
+               Bharat Venkitesh and
+               Acyr Locatelli and
+               Hanchen Ye and
+               Tianle Cai and
+               Patrick Lewis and
+               Deming Chen},
+  editor    = {Amir Globersons and
+               Lester Mackey and
+               Danielle Belgrave and
+               Angela Fan and
+               Ulrich Paquet and
+               Jakub M. Tomczak and
+               Cheng Zhang},
+  title     = {SnapKV: {LLM} Knows What You are Looking for Before Generation},
+  booktitle = {Advances in Neural Information Processing Systems 38: Annual Conference
+               on Neural Information Processing Systems 2024, NeurIPS 2024, Vancouver,
+               BC, Canada, December 10 - 15, 2024},
+  year      = {2024},
+  url       = {http://papers.nips.cc/paper\_files/paper/2024/hash/28ab418242603e0f7323e54185d19bde-Abstract-Conference.html},
+  timestamp = {Mon, 14 Apr 2025 22:19:00 +0200},
+  biburl    = {https://dblp.org/rec/conf/nips/LiHYVLYCLC24.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
 
-@misc{Ge2024,
-  title         = {Model Tells You What to Discard: Adaptive KV Cache Compression for LLMs},
-  author        = {Suyu Ge and Yunan Zhang and Liyuan Liu and Minjia Zhang and Jiawei Han and Jianfeng Gao},
-  year          = {2024},
-  eprint        = {2310.01801},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.CL},
-  url           = {https://arxiv.org/abs/2310.01801}
-}
 
 @misc{Zhang2025pyramidkv,
-  title         = {PyramidKV: Dynamic KV Cache Compression based on Pyramidal Information Funneling},
-  author        = {Zefan Cai and Yichi Zhang and Bofei Gao and Yuliang Liu and Yucheng Li and others},
-  year          = {2025},
-  eprint        = {2406.02069},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.CL},
-  url           = {https://arxiv.org/abs/2406.02069}
+  author     = {Zefan Cai and
+                Yichi Zhang and
+                Bofei Gao and
+                Yuliang Liu and
+                Tianyu Liu and
+                Keming Lu and
+                Wayne Xiong and
+                Yue Dong and
+                Baobao Chang and
+                Junjie Hu and
+                Wen Xiao},
+  title      = {PyramidKV: Dynamic {KV} Cache Compression based on Pyramidal Information
+                Funneling},
+  journal    = {CoRR},
+  volume     = {abs/2406.02069},
+  year       = {2024},
+  url        = {https://doi.org/10.48550/arXiv.2406.02069},
+  doi        = {10.48550/ARXIV.2406.02069},
+  eprinttype = {arXiv},
+  eprint     = {2406.02069},
+  timestamp  = {Sat, 14 Mar 2026 17:13:43 +0100},
+  biburl     = {https://dblp.org/rec/journals/corr/abs-2406-02069.bib},
+  bibsource  = {dblp computer science bibliography, https://dblp.org}
 }
+
 
 @article{Liu2024kivi,
-  doi       = {10.13140/RG.2.2.28167.37282},
-  url       = {https://www.researchgate.net/doi/10.13140/RG.2.2.28167.37282},
-  author    = {{Zirui Liu} and {Jiayi Yuan} and {Hongye Jin} and {Shaochen Zhong} and {Zhaozhuo Xu} and Braverman, Vladimir and {Beidi Chen} and Hu, Xia},
-  language  = {en},
-  title     = {KIVI : Plug-and-play 2bit KV Cache Quantization with Streaming Asymmetric Quantization},
-  publisher = {Unpublished},
-  year      = {2023}
+  author    = {Zirui Liu and
+               Jiayi Yuan and
+               Hongye Jin and
+               Shaochen (Henry) Zhong and
+               Zhaozhuo Xu and
+               Vladimir Braverman and
+               Beidi Chen and
+               Xia Hu},
+  editor    = {Ruslan Salakhutdinov and
+               Zico Kolter and
+               Katherine A. Heller and
+               Adrian Weller and
+               Nuria Oliver and
+               Jonathan Scarlett and
+               Felix Berkenkamp},
+  title     = {{KIVI:} {A} Tuning-Free Asymmetric 2bit Quantization for {KV} Cache},
+  booktitle = {Forty-first International Conference on Machine Learning, {ICML} 2024,
+               Vienna, Austria, July 21-27, 2024},
+  series    = {Proceedings of Machine Learning Research},
+  pages     = {32332--32344},
+  publisher = {{PMLR} / OpenReview.net},
+  year      = {2024},
+  url       = {https://proceedings.mlr.press/v235/liu24bz.html},
+  timestamp = {Mon, 09 Feb 2026 17:23:54 +0100},
+  biburl    = {https://dblp.org/rec/conf/icml/LiuYJZXBC024.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
 
-@misc{Hooper2025,
-  title         = {KVQuant: Towards 10 Million Context Length LLM Inference with KV Cache Quantization},
-  author        = {Coleman Hooper and Sehoon Kim and Hiva Mohammadzadeh and Michael W. Mahoney and Yakun Sophia Shao and Kurt Keutzer and Amir Gholami},
-  year          = {2025},
-  eprint        = {2401.18079},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.LG},
-  url           = {https://arxiv.org/abs/2401.18079}
-}
-
-@misc{Ribar2024,
-  title         = {SparQ Attention: Bandwidth-Efficient LLM Inference},
-  author        = {Luka Ribar and Ivan Chelombiev and Luke Hudlass-Galley and Charlie Blake and Carlo Luschi and Douglas Orr},
-  year          = {2024},
-  eprint        = {2312.04985},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.LG},
-  url           = {https://arxiv.org/abs/2312.04985}
-}
-
-@misc{Tang2024,
-  title         = {Quest: Query-Aware Sparsity for Efficient Long-Context LLM Inference},
-  author        = {Jiaming Tang and Yilong Zhao and Kan Zhu and Guangxuan Xiao and Baris Kasikci and Song Han},
-  year          = {2024},
-  eprint        = {2406.10774},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.CL},
-  url           = {https://arxiv.org/abs/2406.10774}
-}
-
-@misc{Devoto2024,
-  title         = {A Simple and Effective $L_2$ Norm-Based Strategy for KV Cache Compression},
-  author        = {Alessio Devoto and Yu Zhao and Simone Scardapane and Pasquale Minervini},
-  year          = {2024},
-  eprint        = {2406.11430},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.CL},
-  url           = {https://arxiv.org/abs/2406.11430}
-}
-
-@misc{Dong2024,
-  title         = {Get More with LESS: Synthesizing Recurrence with KV Cache Compression for Efficient LLM Inference},
-  author        = {Harry Dong and Xinyu Yang and Zhenyu Zhang and Zhangyang Wang and Yuejie Chi and Beidi Chen},
-  year          = {2024},
-  eprint        = {2402.09398},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.LG},
-  url           = {https://arxiv.org/abs/2402.09398}
-}
-
-@misc{Nawrot2024,
-  title         = {Dynamic Memory Compression: Retrofitting LLMs for Accelerated Inference},
-  author        = {Piotr Nawrot and Adrian Łańcucki and Marcin Chochowski and David Tarjan and Edoardo M. Ponti},
-  year          = {2024},
-  eprint        = {2403.09636},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.CL},
-  url           = {https://arxiv.org/abs/2403.09636}
-}
-
-% ----------------------------------------------------------
-% Attention Mechanisms & Efficient Transformers (8)
-% ----------------------------------------------------------
 
 @article{Vaswani2017,
-  title   = {Attention is all you need},
-  author  = {Vaswani, Ashish and Shazeer, Noam and Parmar, Niki and Uszkoreit, Jakob and Jones, Llion and Gomez, Aidan N and Kaiser, {\L}ukasz and Polosukhin, Illia},
-  journal = {Advances in neural information processing systems},
-  volume  = {30},
-  year    = {2017}
+  author    = {Ashish Vaswani and
+               Noam Shazeer and
+               Niki Parmar and
+               Jakob Uszkoreit and
+               Llion Jones and
+               Aidan N. Gomez and
+               Lukasz Kaiser and
+               Illia Polosukhin},
+  editor    = {Isabelle Guyon and
+               Ulrike von Luxburg and
+               Samy Bengio and
+               Hanna M. Wallach and
+               Rob Fergus and
+               S. V. N. Vishwanathan and
+               Roman Garnett},
+  title     = {Attention is All you Need},
+  booktitle = {Advances in Neural Information Processing Systems 30: Annual Conference
+               on Neural Information Processing Systems 2017, December 4-9, 2017,
+               Long Beach, CA, {USA}},
+  pages     = {5998--6008},
+  year      = {2017},
+  url       = {https://proceedings.neurips.cc/paper/2017/hash/3f5ee243547dee91fbd053c1c4a845aa-Abstract.html},
+  timestamp = {Thu, 21 Jan 2021 15:15:21 +0100},
+  biburl    = {https://dblp.org/rec/conf/nips/VaswaniSPUJGKP17.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
 
-@misc{Dao2022,
-  title         = {FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness},
-  author        = {Tri Dao and Daniel Y. Fu and Stefano Ermon and Atri Rudra and Christopher Ré},
-  year          = {2022},
-  eprint        = {2205.14135},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.LG},
-  url           = {https://arxiv.org/abs/2205.14135}
-}
-
-@misc{Dao2023,
-  title         = {FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning},
-  author        = {Tri Dao},
-  year          = {2023},
-  eprint        = {2307.08691},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.LG},
-  url           = {https://arxiv.org/abs/2307.08691}
-}
-
-@misc{Shazeer2019,
-  title         = {Fast Transformer Decoding: One Write-Head is All You Need},
-  author        = {Noam Shazeer},
-  year          = {2019},
-  eprint        = {1911.02150},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.NE},
-  url           = {https://arxiv.org/abs/1911.02150}
-}
 
 @misc{Ainslie2023,
-  title         = {GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints},
-  author        = {Joshua Ainslie and James Lee-Thorp and Michiel de Jong and Yury Zemlyanskiy and Federico Lebrón and Sumit Sanghai},
-  year          = {2023},
-  eprint        = {2305.13245},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.CL},
-  url           = {https://arxiv.org/abs/2305.13245}
+  author    = {Joshua Ainslie and
+               James Lee{-}Thorp and
+               Michiel de Jong and
+               Yury Zemlyanskiy and
+               Federico Lebr{\'{o}}n and
+               Sumit Sanghai},
+  editor    = {Houda Bouamor and
+               Juan Pino and
+               Kalika Bali},
+  title     = {{GQA:} Training Generalized Multi-Query Transformer Models from Multi-Head
+               Checkpoints},
+  booktitle = {Proceedings of the 2023 Conference on Empirical Methods in Natural
+               Language Processing, {EMNLP} 2023, Singapore, December 6-10, 2023},
+  pages     = {4895--4901},
+  publisher = {Association for Computational Linguistics},
+  year      = {2023},
+  url       = {https://doi.org/10.18653/v1/2023.emnlp-main.298},
+  doi       = {10.18653/V1/2023.EMNLP-MAIN.298},
+  timestamp = {Fri, 12 Apr 2024 13:11:50 +0200},
+  biburl    = {https://dblp.org/rec/conf/emnlp/AinslieLJZLS23.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
 
-@misc{Beltagy2020,
-  title         = {Longformer: The Long-Document Transformer},
-  author        = {Iz Beltagy and Matthew E. Peters and Arman Cohan},
-  year          = {2020},
-  eprint        = {2004.05150},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.CL},
-  url           = {https://arxiv.org/abs/2004.05150}
-}
 
 @misc{Pope2022,
-  title         = {Efficiently Scaling Transformer Inference},
-  author    = {Reiner Pope and Sholto Douglas and Aakanksha Chowdhery and Jacob Devlin and James Bradbury and others},
-  year          = {2022},
-  eprint        = {2211.05102},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.LG},
-  url           = {https://arxiv.org/abs/2211.05102}
+  author    = {Reiner Pope and
+               Sholto Douglas and
+               Aakanksha Chowdhery and
+               Jacob Devlin and
+               James Bradbury and
+               Jonathan Heek and
+               Kefan Xiao and
+               Shivani Agrawal and
+               Jeff Dean},
+  editor    = {Dawn Song and
+               Michael Carbin and
+               Tianqi Chen},
+  title     = {Efficiently Scaling Transformer Inference},
+  booktitle = {Proceedings of the Sixth Conference on Machine Learning and Systems,
+               MLSys 2023, Miami, FL, USA, June 4-8, 2023},
+  publisher = {mlsys.org},
+  year      = {2023},
+  url       = {https://proceedings.mlsys.org/paper\_files/paper/2023/hash/c4be71ab8d24cdfb45e3d06dbfca2780-Abstract-mlsys2023.html},
+  timestamp = {Fri, 28 Jun 2024 15:58:54 +0200},
+  biburl    = {https://dblp.org/rec/conf/mlsys/PopeDCDBHXAD23.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
 
+
 @misc{Juravsky2024,
-  title         = {Hydragen: High-Throughput LLM Inference with Shared Prefixes},
-  author        = {Jordan Juravsky and Bradley Brown and Ryan Ehrlich and Daniel Y. Fu and Christopher Ré and Azalia Mirhoseini},
-  year          = {2024},
-  eprint        = {2402.05099},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.LG},
-  url           = {https://arxiv.org/abs/2402.05099}
+  author     = {Jordan Juravsky and
+                Bradley C. A. Brown and
+                Ryan Ehrlich and
+                Daniel Y. Fu and
+                Christopher R{\'{e}} and
+                Azalia Mirhoseini},
+  title      = {Hydragen: High-Throughput {LLM} Inference with Shared Prefixes},
+  journal    = {CoRR},
+  volume     = {abs/2402.05099},
+  year       = {2024},
+  url        = {https://doi.org/10.48550/arXiv.2402.05099},
+  doi        = {10.48550/ARXIV.2402.05099},
+  eprinttype = {arXiv},
+  eprint     = {2402.05099},
+  timestamp  = {Wed, 26 Feb 2025 21:07:16 +0100},
+  biburl     = {https://dblp.org/rec/journals/corr/abs-2402-05099.bib},
+  bibsource  = {dblp computer science bibliography, https://dblp.org}
 }
 
 % ----------------------------------------------------------
 % LLM Models (5)
 % ----------------------------------------------------------
 
-@misc{Touvron2023,
-  title         = {Llama 2: Open Foundation and Fine-Tuned Chat Models},
-  author        = {Hugo Touvron and Louis Martin and Kevin Stone and Peter Albert and Amjad Almahairi and others},
-  year          = {2023},
-  eprint        = {2307.09288},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.CL},
-  url           = {https://arxiv.org/abs/2307.09288}
-}
 
 @misc{Grattafiori2024,
-  title         = {The Llama 3 Herd of Models},
-  author        = {Aaron Grattafiori and Abhimanyu Dubey and Abhinav Jauhri and Abhinav Pandey and Abhishek Kadian and others},
-  year          = {2024},
-  eprint        = {2407.21783},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.AI},
-  url           = {https://arxiv.org/abs/2407.21783}
+  author     = {Llama Team},
+  title      = {The Llama 3 Herd of Models},
+  journal    = {CoRR},
+  volume     = {abs/2407.21783},
+  year       = {2024},
+  url        = {https://doi.org/10.48550/arXiv.2407.21783},
+  doi        = {10.48550/ARXIV.2407.21783},
+  eprinttype = {arXiv},
+  eprint     = {2407.21783},
+  timestamp  = {Sun, 02 Nov 2025 21:28:04 +0100},
+  biburl     = {https://dblp.org/rec/journals/corr/abs-2407-21783.bib},
+  bibsource  = {dblp computer science bibliography, https://dblp.org}
 }
 
-@misc{Brown2020,
-  title         = {Language Models are Few-Shot Learners},
-  author        = {Tom B. Brown and Benjamin Mann and Nick Ryder and Melanie Subbiah and Jared Kaplan and others},
-  year          = {2020},
-  eprint        = {2005.14165},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.CL},
-  url           = {https://arxiv.org/abs/2005.14165}
-}
-
-@misc{Jiang2023,
-  title         = {Mistral 7B},
-  author        = {Albert Q. Jiang and Alexandre Sablayrolles and Arthur Mensch and Chris Bamford and Devendra Singh Chaplot and others},
-  year          = {2023},
-  eprint        = {2310.06825},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.CL},
-  url           = {https://arxiv.org/abs/2310.06825}
-}
-
-@misc{Chowdhery2022,
-  title         = {PaLM: Scaling Language Modeling with Pathways},
-  author        = {Aakanksha Chowdhery and Sharan Narang and Jacob Devlin and Maarten Bosma and Gaurav Mishra and others},
-  year          = {2022},
-  eprint        = {2204.02311},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.CL},
-  url           = {https://arxiv.org/abs/2204.02311}
-}
-
-% ----------------------------------------------------------
-% Scheduling / Resource Management (5)
-% ----------------------------------------------------------
 
 @inproceedings{Grandl2014,
-  author    = {Grandl, Robert and Ananthanarayanan, Ganesh and Kandula, Srikanth and Rao, Sriram and Akella, Aditya},
+  author    = {Robert Grandl and
+               Ganesh Ananthanarayanan and
+               Srikanth Kandula and
+               Sriram Rao and
+               Aditya Akella},
+  editor    = {Fabi{\'{a}}n E. Bustamante and
+               Y. Charlie Hu and
+               Arvind Krishnamurthy and
+               Sylvia Ratnasamy},
   title     = {Multi-resource packing for cluster schedulers},
+  booktitle = {{ACM} {SIGCOMM} 2014 Conference, SIGCOMM'14, Chicago, IL, USA, August
+               17-22, 2014},
+  pages     = {455--466},
+  publisher = {{ACM}},
   year      = {2014},
-  isbn      = {9781450328364},
-  publisher = {Association for Computing Machinery},
-  address   = {New York, NY, USA},
   url       = {https://doi.org/10.1145/2619239.2626334},
   doi       = {10.1145/2619239.2626334},
-  abstract  = {Tasks in modern data parallel clusters have highly diverse resource requirements, along CPU, memory, disk and network. Any of these resources may become bottlenecks and hence, the likelihood of wasting resources due to fragmentation is now larger. Today's schedulers do not explicitly reduce fragmentation. Worse, since they only allocate cores and memory, the resources that they ignore (disk and network) can be over-allocated leading to interference, failures and hogging of cores or memory that could have been used by other tasks. We present Tetris, a cluster scheduler that packs, i.e., matches multi-resource task requirements with resource availabilities of machines so as to increase cluster efficiency (makespan). Further, Tetris uses an analog of shortest-running-time-first to trade-off cluster efficiency for speeding up individual jobs. Tetris' packing heuristics seamlessly work alongside a large class of fairness policies. Trace-driven simulations and deployment of our prototype on a 250 node cluster shows median gains of 30\% in job completion time while achieving nearly perfect fairness.},
-  booktitle = {Proceedings of the 2014 ACM Conference on SIGCOMM},
-  pages     = {455–466},
-  numpages  = {12},
-  keywords  = {packing, multi-dimensional, makespan, fairness, completion time, cluster schedulers},
-  location  = {Chicago, Illinois, USA},
-  series    = {SIGCOMM '14}
+  timestamp = {Wed, 10 Mar 2021 13:04:38 +0100},
+  biburl    = {https://dblp.org/rec/conf/sigcomm/GrandlAKRA14.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
+
 
 @inproceedings{Ghodsi2011,
-  author    = {Ali Ghodsi and Matei Zaharia and Benjamin Hindman and Andy Konwinski and Scott Shenker and Ion Stoica},
+  author    = {Ali Ghodsi and
+               Matei Zaharia and
+               Benjamin Hindman and
+               Andy Konwinski and
+               Scott Shenker and
+               Ion Stoica},
+  editor    = {David G. Andersen and
+               Sylvia Ratnasamy},
   title     = {Dominant Resource Fairness: Fair Allocation of Multiple Resource Types},
-  booktitle = {Proceedings of the 8th USENIX Symposium on Networked Systems Design and Implementation (NSDI)},
-  year      = {2011}
+  booktitle = {Proceedings of the 8th {USENIX} Symposium on Networked Systems Design
+               and Implementation, {NSDI} 2011, Boston, MA, USA, March 30 - April
+               1, 2011},
+  publisher = {{USENIX} Association},
+  year      = {2011},
+  url       = {https://www.usenix.org/conference/nsdi11/dominant-resource-fairness-fair-allocation-multiple-resource-types},
+  timestamp = {Tue, 02 Feb 2021 08:05:49 +0100},
+  biburl    = {https://dblp.org/rec/conf/nsdi/GhodsiZHKSS10.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
 
-@inproceedings{Isard2009,
-  author    = {Isard, Michael and Prabhakaran, Vijayan and Currey, Jon and Wieder, Udi and Talwar, Kunal and Goldberg, Andrew},
-  title     = {Quincy: fair scheduling for distributed computing clusters},
-  year      = {2009},
-  isbn      = {9781605587523},
-  publisher = {Association for Computing Machinery},
-  address   = {New York, NY, USA},
-  url       = {https://doi.org/10.1145/1629575.1629601},
-  doi       = {10.1145/1629575.1629601},
-  abstract  = {This paper addresses the problem of scheduling concurrent jobs on clusters where application data is stored on the computing nodes. This setting, in which scheduling computations close to their data is crucial for performance, is increasingly common and arises in systems such as MapReduce, Hadoop, and Dryad as well as many grid-computing environments. We argue that data-intensive computation benefits from a fine-grain resource sharing model that differs from the coarser semi-static resource allocations implemented by most existing cluster computing architectures. The problem of scheduling with locality and fairness constraints has not previously been extensively studied under this resource-sharing model.We introduce a powerful and flexible new framework for scheduling concurrent distributed jobs with fine-grain resource sharing. The scheduling problem is mapped to a graph datastructure, where edge weights and capacities encode the competing demands of data locality, fairness, and starvation-freedom, and a standard solver computes the optimal online schedule according to a global cost model. We evaluate our implementation of this framework, which we call Quincy, on a cluster of a few hundred computers using a varied workload of data-and CPU-intensive jobs. We evaluate Quincy against an existing queue-based algorithm and implement several policies for each scheduler, with and without fairness constraints. Quincy gets better fairness when fairness is requested, while substantially improving data locality. The volume of data transferred across the cluster is reduced by up to a factor of 3.9 in our experiments, leading to a throughput increase of up to 40\%.},
-  booktitle = {Proceedings of the ACM SIGOPS 22nd Symposium on Operating Systems Principles},
-  pages     = {261–276},
-  numpages  = {16},
-  keywords  = {network flow scheduling, mapreduce, fair scheduling, dryad, cluster scheduling},
-  location  = {Big Sky, Montana, USA},
-  series    = {SOSP '09}
-}
-
-@misc{Leviathan2023,
-  title         = {Fast Inference from Transformers via Speculative Decoding},
-  author        = {Yaniv Leviathan and Matan Kalman and Yossi Matias},
-  year          = {2023},
-  eprint        = {2211.17192},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.LG},
-  url           = {https://arxiv.org/abs/2211.17192}
-}
-
-@misc{Chen2023spec,
-  title         = {Accelerating Large Language Model Decoding with Speculative Sampling},
-  author        = {Charlie Chen and Sebastian Borgeaud and Geoffrey Irving and Jean-Baptiste Lespiau and Laurent Sifre and John Jumper},
-  year          = {2023},
-  eprint        = {2302.01318},
-  archiveprefix = {arXiv},
-  primaryclass  = {cs.CL},
-  url           = {https://arxiv.org/abs/2302.01318}
-}
-
-% ----------------------------------------------------------
-% Benchmarking / Datasets (4)
-% ----------------------------------------------------------
 
 @inproceedings{Zheng2024lmsys,
-  author    = {Lianmin Zheng and Wei-Lin Chiang and Ying Sheng and Tianle Li and Siyuan Zhuang and others},
-  title     = {{LMSYS-Chat-1M}: A Large-Scale Real-World {LLM} Conversation Dataset},
-  booktitle = {Proceedings of the 12th International Conference on Learning Representations (ICLR)},
-  year      = {2024}
+  author    = {Lianmin Zheng and
+               Wei{-}Lin Chiang and
+               Ying Sheng and
+               Tianle Li and
+               Siyuan Zhuang and
+               Zhanghao Wu and
+               Yonghao Zhuang and
+               Zhuohan Li and
+               Zi Lin and
+               Eric P. Xing and
+               Joseph E. Gonzalez and
+               Ion Stoica and
+               Hao Zhang},
+  title     = {LMSYS-Chat-1M: {A} Large-Scale Real-World {LLM} Conversation Dataset},
+  booktitle = {The Twelfth International Conference on Learning Representations,
+               {ICLR} 2024, Vienna, Austria, May 7-11, 2024},
+  publisher = {OpenReview.net},
+  year      = {2024},
+  url       = {https://openreview.net/forum?id=BOfDKxfwt0},
+  timestamp = {Tue, 11 Feb 2025 11:42:30 +0100},
+  biburl    = {https://dblp.org/rec/conf/iclr/ZhengC0LZW00LXG24.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
+
 
 @misc{ShareGPT2023,
-  author = {{TeamShareGPT}},
-  title  = {{ShareGPT} Conversations Dataset},
-  year   = {2023}
+  author       = {{ShareGPT Team}},
+  title        = {{ShareGPT}},
+  year         = {2023},
+  url          = {https://sharegpt.com/}
 }
 
-@book{Martello1990,
-  author    = {Silvano Martello and Paolo Toth},
-  title     = {Knapsack Problems: Algorithms and Computer Implementations},
-  publisher = {John Wiley \& Sons},
-  year      = {1990}
+
+@book{Martello1993,
+  author    = {Pamela H. Vance},
+  title     = {Knapsack Problems: Algorithms and Computer Implementations {(S.} Martello
+               and P. Toth)},
+  journal   = {{SIAM} Rev.},
+  volume    = {35},
+  number    = {4},
+  pages     = {684--685},
+  year      = {1993},
+  url       = {https://doi.org/10.1137/1035174},
+  doi       = {10.1137/1035174},
+  timestamp = {Tue, 29 Sep 2020 10:58:28 +0200},
+  biburl    = {https://dblp.org/rec/journals/siamrev/Vance93.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
 }
+
 
 @book{Kellerer2004,
-  author    = {Hans Kellerer and Ulrich Pferschy and David Pisinger},
-  title     = {Knapsack Problems},
+  author    = {Hans Kellerer and
+               Ulrich Pferschy and
+               David Pisinger},
+  title     = {Knapsack problems},
   publisher = {Springer},
   year      = {2004},
-  url       = {https://doi.org/10.1007/978-3-540-24777-7}
+  url       = {https://doi.org/10.1007/978-3-540-24777-7},
+  doi       = {10.1007/978-3-540-24777-7},
+  isbn      = {978-3-540-40286-2},
+  timestamp = {Mon, 16 Sep 2019 14:43:12 +0200},
+  biburl    = {https://dblp.org/rec/books/daglib/0010031.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
+}
+
+
+@inproceedings{Bansal2001SRPT,
+  author       = {Mor Harchol{-}Balter and
+                  Nikhil Bansal and
+                  Bianca Schroeder and
+                  Mukesh Agrawal},
+  editor       = {Dror G. Feitelson and
+                  Larry Rudolph},
+  title        = {{SRPT} Scheduling for Web Servers},
+  booktitle    = {Job Scheduling Strategies for Parallel Processing, 7th International
+                  Workshop, {JSSPP} 2001, Cambridge, MA, USA, June 16, 2001, Revised
+                  Papers},
+  series       = {Lecture Notes in Computer Science},
+  pages        = {11--20},
+  publisher    = {Springer},
+  year         = {2001},
+  url          = {https://doi.org/10.1007/3-540-45540-X\_2},
+  doi          = {10.1007/3-540-45540-X\_2},
+  timestamp    = {Tue, 21 Mar 2023 20:56:17 +0100},
+  biburl       = {https://dblp.org/rec/conf/jsspp/Harchol-BalterBSA01.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+
+@inproceedings{Scully2019MSERPT,
+  author    = {Ziv Scully and Mor Harchol-Balter and Alan Scheller-Wolf},
+  title     = {Simple Optimal Scheduling for the {M/G/k}},
+  booktitle = {Proceedings of the 2019 ACM SIGMETRICS International Conference on Measurement and Modeling of Computer Systems},
+  year      = {2019}
+}
+
+
+@inproceedings{Gu2020Tiresias,
+  author       = {Ziv Scully and
+                  Mor Harchol{-}Balter and
+                  Alan Scheller{-}Wolf},
+  editor       = {Edmund Yeh and
+                  Athina Markopoulou and
+                  Y. C. Tay},
+  title        = {Simple Near-Optimal Scheduling for the {M/G/1}},
+  booktitle    = {Abstracts of the 2020 SIGMETRICS/Performance Joint International Conference
+                  on Measurement and Modeling of Computer Systems, Boston, MA, USA,
+                  June, 8-12, 2020},
+  pages        = {37--38},
+  publisher    = {{ACM}},
+  year         = {2020},
+  url          = {https://doi.org/10.1145/3393691.3394216},
+  doi          = {10.1145/3393691.3394216},
+  timestamp    = {Tue, 21 Mar 2023 21:00:37 +0100},
+  biburl       = {https://dblp.org/rec/conf/sigmetrics/ScullyHS20.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+
+@book{Silberschatz2018,
+  author       = {Abraham Silberschatz and
+                  Peter Baer Galvin and
+                  Greg Gagne},
+  title        = {Operating System Concepts, 10th Edition},
+  publisher    = {Wiley},
+  year         = {2018},
+  url          = {http://os-book.com/OS10/index.html},
+  isbn         = {978-1-118-06333-0},
+  timestamp    = {Sun, 29 Dec 2019 10:48:30 +0100},
+  biburl       = {https://dblp.org/rec/books/wi/SGG2018.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+
+@article{wu2023fastserve,
+  author       = {Bingyang Wu and
+                  Yinmin Zhong and
+                  Zili Zhang and
+                  Gang Huang and
+                  Xuanzhe Liu and
+                  Xin Jin},
+  title        = {Fast Distributed Inference Serving for Large Language Models},
+  journal      = {CoRR},
+  volume       = {abs/2305.05920},
+  year         = {2023},
+  url          = {https://doi.org/10.48550/arXiv.2305.05920},
+  doi          = {10.48550/ARXIV.2305.05920},
+  eprinttype   = {arXiv},
+  eprint       = {2305.05920},
+  timestamp    = {Mon, 03 Mar 2025 21:32:53 +0100},
+  biburl       = {https://dblp.org/rec/journals/corr/abs-2305-05920.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+
+@inproceedings{sun2024llumnix,
+  author       = {Biao Sun and
+                  Ziming Huang and
+                  Hanyu Zhao and
+                  Wencong Xiao and
+                  Xinyi Zhang and
+                  Yong Li and
+                  Wei Lin},
+  editor       = {Ada Gavrilovska and
+                  Douglas B. Terry},
+  title        = {Llumnix: Dynamic Scheduling for Large Language Model Serving},
+  booktitle    = {18th {USENIX} Symposium on Operating Systems Design and Implementation,
+                  {OSDI} 2024, Santa Clara, CA, USA, July 10-12, 2024},
+  pages        = {173--191},
+  publisher    = {{USENIX} Association},
+  year         = {2024},
+  url          = {https://www.usenix.org/conference/osdi24/presentation/sun-biao},
+  timestamp    = {Thu, 04 Dec 2025 17:15:24 +0100},
+  biburl       = {https://dblp.org/rec/conf/osdi/SunHZXZL024.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
 }

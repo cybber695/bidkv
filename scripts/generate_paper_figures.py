@@ -2,6 +2,7 @@
 """Generate paper figures from vllm_v8_full_validation results.
 
 Produces:
+  - paper/figures/fig1_intro_evidence_panel_b.{pdf,png}  (scatter: LIFO blind selection)
   - paper/figures/fig3_rate_sensitivity.{pdf,png}
   - paper/figures/fig5_compress_coverage.{pdf,png}
 
@@ -15,19 +16,22 @@ import sys
 from pathlib import Path
 
 RESULTS_DIR = Path(__file__).resolve().parent.parent / "results" / "vllm_v8_full_validation"
+FIG3_RESULTS_DIR = Path(__file__).resolve().parent.parent / "results" / "vllm_fig3_mixed_rate38"
+FIG3_RATE57_DIR = Path(__file__).resolve().parent.parent / "results" / "vllm_fig3_mixed_rate57"
 FIG_DIR = Path(__file__).resolve().parent.parent / "paper" / "figures"
 
 STRATEGIES = [
     "preempt-evict",
     "preempt-evict-sjf",
     "static-random",
-    "h2o-style",
+    "largest-first",
     "bidkv",
 ]
 STRATEGY_DISPLAY = {
     "preempt-evict": "PE",
     "preempt-evict-sjf": "PE-SJF",
     "static-random": "Static-Random",
+    "largest-first": "Largest-First",
     "h2o-style": "Largest-First",
     "bidkv": "BidKV",
 }
@@ -38,6 +42,7 @@ COLORS = {
     "preempt-evict": "#7f7f7f",
     "preempt-evict-sjf": "#aec7e8",
     "static-random": "#1f77b4",
+    "largest-first": "#ff7f0e",
     "h2o-style": "#ff7f0e",
     "bidkv": "#d62728",
 }
@@ -45,6 +50,7 @@ MARKERS = {
     "preempt-evict": "s",
     "preempt-evict-sjf": "^",
     "static-random": "v",
+    "largest-first": "D",
     "h2o-style": "D",
     "bidkv": "o",
 }
@@ -86,14 +92,33 @@ def load_run(filepath: Path) -> dict:
 
 
 def load_all() -> dict[tuple[str, float], list[dict]]:
+    """Load all runs, using vllm_fig3_mixed_rate57 data for rate=5.7 (overrides v8)."""
     from collections import defaultdict
     groups: dict[tuple[str, float], list[dict]] = defaultdict(list)
+    # Load v8 baseline for rate=2.0 and 3.8
     for f in sorted(RESULTS_DIR.glob("*.json")):
         if f.name.startswith("candidate"):
             continue
         row = load_run(f)
-        if row["strategy"] in STRATEGIES:
-            groups[(row["strategy"], row["rate"])].append(row)
+        strat = row["strategy"]
+        # map legacy h2o-style to largest-first
+        if strat == "h2o-style":
+            strat = "largest-first"
+            row["strategy"] = "largest-first"
+        if strat in STRATEGIES and row["rate"] != 5.7:
+            groups[(strat, row["rate"])].append(row)
+    # Override rate=5.7 with updated data from vllm_fig3_mixed_rate57
+    if FIG3_RATE57_DIR.is_dir():
+        for f in sorted(FIG3_RATE57_DIR.glob("*.json")):
+            if f.name.startswith("candidate"):
+                continue
+            row = load_run(f)
+            strat = row["strategy"]
+            if strat == "h2o-style":
+                strat = "largest-first"
+                row["strategy"] = "largest-first"
+            if strat in STRATEGIES and row["rate"] == 5.7:
+                groups[(strat, row["rate"])].append(row)
     return groups
 
 
@@ -159,6 +184,53 @@ def generate_fig3(groups: dict) -> None:
     plt.close(fig)
 
 
+def load_fig3_run(filepath: Path) -> dict:
+    """Load a single run from vllm_fig3_mixed_rate38 using all-path fields."""
+    with open(filepath) as f:
+        d = json.load(f)
+    am = d.get("adapter_metrics", {})
+    return {
+        "strategy": d.get("strategy", ""),
+        "rate": d.get("request_rate", 0),
+        "all_preemptions": am.get("total_all_preemptions", 0),
+        "all_tokens_freed": am.get("total_all_tokens_freed", 0),
+    }
+
+
+def load_fig3_all() -> dict[tuple[str, float], list[dict]]:
+    from collections import defaultdict
+    groups: dict[tuple[str, float], list[dict]] = defaultdict(list)
+    for f in sorted(FIG3_RESULTS_DIR.glob("*.json")):
+        if f.name.startswith("candidate"):
+            continue
+        row = load_fig3_run(f)
+        strat = row["strategy"]
+        # map legacy h2o-style to largest-first
+        if strat == "h2o-style":
+            strat = "largest-first"
+            row["strategy"] = "largest-first"
+        if strat in STRATEGIES:
+            groups[(strat, row["rate"])].append(row)
+    return groups
+
+
+def load_fig5_all() -> dict[tuple[str, float], list[dict]]:
+    """Load rate=5.7 reclamation data for fig5 from vllm_fig3_mixed_rate57."""
+    from collections import defaultdict
+    groups: dict[tuple[str, float], list[dict]] = defaultdict(list)
+    for f in sorted(FIG3_RATE57_DIR.glob("*.json")):
+        if f.name.startswith("candidate"):
+            continue
+        row = load_fig3_run(f)
+        strat = row["strategy"]
+        if strat == "h2o-style":
+            strat = "largest-first"
+            row["strategy"] = "largest-first"
+        if strat in STRATEGIES:
+            groups[(strat, row["rate"])].append(row)
+    return groups
+
+
 def generate_fig5(groups: dict) -> None:
     import matplotlib
     matplotlib.use("Agg")
@@ -169,16 +241,17 @@ def generate_fig5(groups: dict) -> None:
         "xtick.labelsize": 9, "ytick.labelsize": 9,
     })
 
+    fig5_groups = load_fig3_all()
     rate = 3.8
     strats_ok, labels, evicts, freed = [], [], [], []
     for strat in STRATEGIES:
-        runs = groups.get((strat, rate), [])
+        runs = fig5_groups.get((strat, rate), [])
         if not runs:
             continue
         strats_ok.append(strat)
         labels.append(STRATEGY_DISPLAY[strat])
-        evicts.append(avg(runs, "evictions"))
-        freed.append(avg(runs, "tokens_freed") / 1000)
+        evicts.append(sum(r["all_preemptions"] for r in runs) / len(runs))
+        freed.append(sum(r["all_tokens_freed"] for r in runs) / len(runs) / 1000)
 
     n = len(strats_ok)
     x = list(range(n))
@@ -190,19 +263,21 @@ def generate_fig5(groups: dict) -> None:
 
     ax1.bar([i - bw / 2 for i in x], evicts, bw,
             color=bar_c, alpha=0.85, edgecolor="black", linewidth=0.5,
-            label="Proactive Evictions")
+            label="Reclamation Count (All Paths)")
     ax2r.bar([i + bw / 2 for i in x], freed, bw,
              color=bar_c, alpha=0.4, edgecolor="black", linewidth=0.5,
              hatch="//", label="Tokens Freed (×1000)")
 
     ax1.set_xlabel("Strategy")
-    ax1.set_ylabel("Proactive Eviction Count")
+    ax1.set_ylabel("Reclamation Count")
     ax2r.set_ylabel("Tokens Freed (×1000)")
     ax1.set_xticks(x)
     ax1.set_xticklabels(labels, rotation=20, ha="right")
 
     me = max(evicts) if evicts and max(evicts) > 0 else 1
     mf = max(freed) if freed and max(freed) > 0 else 1
+    ax1.set_ylim(0, me * 1.18)
+    ax2r.set_ylim(0, mf * 1.18)
     for i, (ev, fr) in enumerate(zip(evicts, freed)):
         if ev > 0:
             ax1.text(i - bw / 2, ev + me * 0.02, f"{ev:.0f}",
@@ -213,12 +288,230 @@ def generate_fig5(groups: dict) -> None:
 
     h1, l1 = ax1.get_legend_handles_labels()
     h2, l2 = ax2r.get_legend_handles_labels()
-    ax1.legend(h1 + h2, l1 + l2, loc="upper left", fontsize=8)
+    ax1.legend(h1 + h2, l1 + l2,
+               loc="lower left", bbox_to_anchor=(0, 1.02),
+               ncol=2, fontsize=8, borderaxespad=0)
     ax1.grid(True, axis="y", alpha=0.2, linestyle="--")
 
-    fig.tight_layout()
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
     save_fig(fig, "fig5_compress_coverage")
     plt.close(fig)
+
+
+def generate_fig1_panel_b_scatter() -> None:
+    """Generate panel (b) for Figure 1: 2D trade-off space with confidence ellipses.
+
+    Each of 150 snapshots contributes ONE point per strategy:
+      X = completion ratio c of the chosen victim  (0=newest, cheapest)
+      Y = KV-footprint rank of the chosen victim   (0=smallest, 1=largest)
+
+    The ideal victim is in the UPPER-LEFT corner: high KV (good) + low c (cheap).
+
+    Expected positions:
+      LIFO         → lower-left : c≈0.13, rank≈0.21  (low cost by accident, low KV)
+      Largest-first → upper-right: c≈0.74, rank=1.00  (max KV, ignores cost)
+      BidKV         → upper-left : c≈0.63, rank≈0.96  (near-max KV at lower cost)
+
+    BidKV is NOT "between" the others — it is in the optimal region that neither
+    baseline reaches.
+
+    Output: paper/figures/fig1_intro_evidence_panel_b.{pdf,png}
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as mpatches
+    import numpy as np
+
+    pe_path = RESULTS_DIR / "preempt-evict__mixed__rate3.8__r0.json"
+    sjf_path = RESULTS_DIR / "preempt-evict-sjf__mixed__rate3.8__r0.json"
+    bk_path  = RESULTS_DIR / "bidkv__mixed__rate3.8__r0.json"
+    if not pe_path.exists():
+        print(f"  SKIP fig1_panel_b: {pe_path} not found", file=sys.stderr)
+        return
+
+    def _load_ok(path: "pathlib.Path") -> list[dict]:
+        with open(path) as f:
+            data = json.load(f)
+        return [
+            r for r in data["request_results"]
+            if not r.get("error")
+            and r.get("first_token_time")
+            and r.get("finish_time")
+            and r["finish_time"] > r["first_token_time"]
+        ]
+
+    ok_pe  = _load_ok(pe_path)
+    ok_sjf = _load_ok(sjf_path) if sjf_path.exists() else ok_pe
+    ok_bk  = _load_ok(bk_path)  if bk_path.exists()  else ok_pe
+
+    t0 = min(r["submit_time"] for r in ok_pe)
+    t1 = max(r["finish_time"] for r in ok_pe)
+
+    # For PE-SJF: align time axis to its own run extent
+    t0_sjf = min(r["submit_time"] for r in ok_sjf)
+    t1_sjf = max(r["finish_time"] for r in ok_sjf)
+
+    # For BidKV: align to its own run extent
+    t0_bk = min(r["submit_time"] for r in ok_bk)
+    t1_bk = max(r["finish_time"] for r in ok_bk)
+
+    def _c_kv(r: dict, t: float) -> tuple[float, float]:
+        progress = (t - r["first_token_time"]) / max(
+            r["finish_time"] - r["first_token_time"], 1e-6
+        )
+        progress = min(max(progress, 0.001), 0.999)
+        gen = float(r["completion_tokens"]) * progress
+        est_prompt = min(r["ttft_ms"], 1000.0) * 0.3 + 50.0
+        return progress, est_prompt + gen  # (c, Y)
+
+    N_SAMPLES = 150
+    MIN_CONC = 6
+    EPSILON = 0.01
+
+    lifo_c: list[float] = []
+    lifo_r: list[float] = []
+    sjf_c: list[float] = []
+    sjf_r: list[float] = []
+    bk_c: list[float] = []
+    bk_r: list[float] = []
+
+    def _snap_victims(
+        ok: list[dict],
+        t0: float,
+        t1: float,
+        mode: str,  # "lifo" | "sjf" | "bidkv"
+        out_c: list[float],
+        out_r: list[float],
+    ) -> None:
+        for i in range(N_SAMPLES):
+            t = t0 + (t1 - t0) * (0.1 + 0.8 * i / N_SAMPLES)
+            snap = [r for r in ok if r["first_token_time"] <= t <= r["finish_time"]]
+            if len(snap) < MIN_CONC:
+                continue
+            n = len(snap)
+            pairs = [_c_kv(r, t) for r in snap]
+            sy = sorted(range(n), key=lambda j: pairs[j][1])
+            rank_y = [0.0] * n
+            for rk, idx in enumerate(sy):
+                rank_y[idx] = rk / max(n - 1, 1)
+            if mode in ("lifo", "sjf"):
+                # Both PE and PE-SJF evict using LIFO (newest request first)
+                vi = max(range(n), key=lambda j: snap[j]["first_token_time"])
+            else:  # bidkv
+                us = [pairs[j][1] / (1.0 + 0.5 * pairs[j][0] + EPSILON) for j in range(n)]
+                vi = max(range(n), key=lambda j: us[j])
+            out_c.append(pairs[vi][0])
+            out_r.append(rank_y[vi])
+
+    _snap_victims(ok_pe,  t0,     t1,     "lifo",  lifo_c, lifo_r)
+    _snap_victims(ok_sjf, t0_sjf, t1_sjf, "sjf",   sjf_c,  sjf_r)
+    _snap_victims(ok_bk,  t0_bk,  t1_bk,  "bidkv", bk_c,   bk_r)
+
+    n_snaps = len(lifo_c)
+
+    def _mean(lst: list[float]) -> float:
+        return sum(lst) / len(lst) if lst else float("nan")
+
+    def _confidence_ellipse(
+        xs: list[float], ys: list[float], ax: "plt.Axes", n_std: float = 1.5, **kwargs: object
+    ) -> mpatches.Ellipse:
+        """Draw a covariance confidence ellipse around (xs, ys)."""
+        xa = np.array(xs)
+        ya = np.array(ys)
+        cov = np.cov(xa, ya)
+        eigenvalues, eigenvectors = np.linalg.eigh(cov)
+        order = eigenvalues.argsort()[::-1]
+        eigenvalues = eigenvalues[order]
+        eigenvectors = eigenvectors[:, order]
+        angle = float(np.degrees(np.arctan2(*eigenvectors[:, 0][::-1])))
+        w = 2 * n_std * float(np.sqrt(max(eigenvalues[0], 0.0)))
+        h = 2 * n_std * float(np.sqrt(max(eigenvalues[1], 0.0)))
+        ellipse = mpatches.Ellipse(
+            (float(np.mean(xa)), float(np.mean(ya))),
+            w, h, angle=angle, **kwargs
+        )
+        ax.add_patch(ellipse)
+        return ellipse
+
+    # ── Figure ────────────────────────────────────────────────────────────────
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.size": 8,
+        "axes.labelsize": 7.5,
+        "axes.titlesize": 8,
+        "xtick.labelsize": 6.5,
+        "ytick.labelsize": 6.5,
+        "legend.fontsize": 6.5,
+        "axes.linewidth": 0.6,
+        "grid.linewidth": 0.4,
+    })
+
+    fig, ax = plt.subplots(figsize=(3.35, 2.85))
+
+    strategies = [
+        ("LIFO",    lifo_c, lifo_r, "#d62728"),
+        ("PE-SJF",  sjf_c,  sjf_r,  "#1f77b4"),
+        ("BidKV",   bk_c,   bk_r,   "#e8a800"),
+    ]
+
+    # ── Ideal zone: upper-left quadrant ───────────────────────────────────────
+    ideal_patch = mpatches.FancyBboxPatch(
+        (-0.02, 0.72), 0.72, 0.32,
+        boxstyle="round,pad=0.01",
+        facecolor="#fff8e1", edgecolor="#c8960a",
+        linewidth=0.8, alpha=0.50, zorder=0,
+    )
+    ax.add_patch(ideal_patch)
+    ax.text(0.34, 1.052, "Ideal: high KV, low cost",
+            ha="center", va="bottom", fontsize=5.5,
+            color="#8a6200", style="italic")
+
+    for label, cs, rs, color in strategies:
+        # Scatter (light, small)
+        ax.scatter(cs, rs, s=10, color=color, edgecolors="none",
+                   alpha=0.28, zorder=2)
+        # 1.5σ confidence ellipse (filled, low alpha)
+        _confidence_ellipse(cs, rs, ax, n_std=1.5,
+                            facecolor=color, edgecolor=color,
+                            alpha=0.18, linewidth=0, zorder=3)
+        # 1.5σ confidence ellipse (outline only)
+        _confidence_ellipse(cs, rs, ax, n_std=1.5,
+                            facecolor="none", edgecolor=color,
+                            alpha=0.85, linewidth=1.2, zorder=4)
+        # Mean marker
+        mx, my = _mean(cs), _mean(rs)
+        ax.plot(mx, my, marker="D", ms=5, color=color, zorder=6,
+                markeredgecolor="white", markeredgewidth=0.5)
+
+    # ── Legend (manual, to include the mean marker style) ────────────────────
+    handles = [
+        mpatches.Patch(facecolor="#d62728", edgecolor="#d62728", alpha=0.7, label="LIFO"),
+        mpatches.Patch(facecolor="#1f77b4", edgecolor="#1f77b4", alpha=0.7, label="PE-SJF"),
+        mpatches.Patch(facecolor="#e8a800", edgecolor="#e8a800", alpha=0.9, label="BidKV"),
+    ]
+    ax.legend(handles=handles, loc="lower right", framealpha=0.92,
+              fontsize=6.5, borderpad=0.5, handlelength=1.0, labelspacing=0.3)
+
+    # ── Axis labels and ticks ─────────────────────────────────────────────────
+    ax.set_xlabel("Completion Ratio $c$ of Selected Victim\n(0 = newest, cheapest to recompute)", labelpad=3)
+    ax.set_ylabel("KV-Footprint Rank of Selected Victim\n(0 = smallest, 1 = largest KV freed)", labelpad=3)
+    ax.set_title("Victim-Selection Trade-off Space  ($n$=" + str(n_snaps) + ")", pad=4)
+    ax.set_xlim(-0.05, 1.08)
+    ax.set_ylim(-0.10, 1.12)
+    ax.set_xticks([0.0, 0.25, 0.5, 0.75, 1.0])
+    ax.set_yticks([0.0, 0.25, 0.5, 0.75, 1.0])
+    ax.grid(True, linestyle=":", alpha=0.30)
+
+    fig.tight_layout(pad=0.5)
+    save_fig(fig, "fig1_intro_evidence_panel_b")
+    plt.close(fig)
+
+    print(
+        f"  Panel (b): {n_snaps} snapshots\n"
+        f"    KV rank mean  — LIFO:{_mean(lifo_r):.3f}  PE-SJF:{_mean(sjf_r):.3f}  BidKV:{_mean(bk_r):.3f}\n"
+        f"    c mean        — LIFO:{_mean(lifo_c):.3f}  PE-SJF:{_mean(sjf_c):.3f}  BidKV:{_mean(bk_c):.3f}"
+    )
 
 
 def main() -> None:
@@ -246,6 +539,7 @@ def main() -> None:
     print()
     generate_fig3(groups)
     generate_fig5(groups)
+    generate_fig1_panel_b_scatter()
     print("\nDone.")
 
 

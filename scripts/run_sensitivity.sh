@@ -12,20 +12,20 @@
 # 9 variants × 3 runs = 27 runs at rate=3.8 (sustained KV pressure regime).
 #
 # Usage:
-#   cd /home/bidkv
+#   cd "$(dirname "$0")/.."  # or: export BIDKV_DIR=/path/to/bidkv
 #   nohup bash scripts/run_sensitivity.sh > results/vllm_sensitivity/run.log 2>&1 &
 #
 # Output: results/vllm_sensitivity/
 
 set -euo pipefail
 
-BIDKV_DIR="/home/bidkv"
+BIDKV_DIR="${BIDKV_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 OUTPUT_BASE="$BIDKV_DIR/results/vllm_sensitivity"
 LOG_DIR="$OUTPUT_BASE/logs"
 mkdir -p "$OUTPUT_BASE" "$LOG_DIR"
 
 # Frozen experiment params (v8-frozen, must match copilot-instructions.md)
-MODEL="${BIDKV_MODEL:-/home/models/Llama-3.1-8B-Instruct}"
+MODEL="${BIDKV_MODEL:-meta-llama/Llama-3.1-8B-Instruct}"
 RATE="3.8"
 WORKLOAD="mixed"
 RUNS=3

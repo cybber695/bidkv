@@ -28,7 +28,7 @@ if [[ "${1:-}" == "--resume" ]]; then
     echo "[INFO] Resume mode: will skip runs with existing result files."
 fi
 
-CONDA_RUN="conda run -n sagellm"
+PYTHON="${PYTHON:-python3}"
 
 # 冻结参数
 MODEL="${BIDKV_MODEL:-meta-llama/Llama-3.1-8B-Instruct}"
@@ -53,11 +53,11 @@ fi
 echo "[OK] Traces directory exists with manifest"
 
 echo "[CHECK] Tests..."
-$CONDA_RUN python -m pytest tests/ -q --tb=line 2>&1 | tail -3
+$PYTHON -m pytest tests/ -q --tb=line 2>&1 | tail -3
 echo "[OK] Tests passed"
 
 echo "[CHECK] Frozen rates consistency..."
-$CONDA_RUN python -c "
+$PYTHON -c "
 from bidkv.experiments.vllm.config import WORKLOAD_REQUEST_RATES
 from bidkv.experiments.sglang.config import WORKLOAD_REQUEST_RATES as SGLANG_RATES
 assert WORKLOAD_REQUEST_RATES == SGLANG_RATES, 'Rate mismatch!'
@@ -70,7 +70,7 @@ echo "============================================================"
 echo "Step 2: vLLM P1 — 3 核心策略 (preempt-evict, h2o-style, bidkv)"
 echo "============================================================"
 
-$CONDA_RUN python -m bidkv.experiments.vllm.runner \
+$PYTHON -m bidkv.experiments.vllm.runner \
     --strategies "preempt-evict,h2o-style,bidkv" \
     --workloads "mixed,long_context" \
     --runs 3 \
@@ -92,7 +92,7 @@ echo "============================================================"
 echo "Step 3: vLLM P2 — 4 次级策略 (static-random, uniform, global-nobid, slack-aware)"
 echo "============================================================"
 
-$CONDA_RUN python -m bidkv.experiments.vllm.runner \
+$PYTHON -m bidkv.experiments.vllm.runner \
     --strategies "static-random,uniform,global-nobid,slack-aware" \
     --workloads "mixed,long_context" \
     --runs 3 \
@@ -126,7 +126,7 @@ echo "============================================================"
 echo "Step 5: SGLang — 3 策略 (sglang_default, slack_aware, bidkv)"
 echo "============================================================"
 
-$CONDA_RUN python -m bidkv.experiments.sglang.runner \
+$PYTHON -m bidkv.experiments.sglang.runner \
     --strategies "sglang_default,slack_aware,bidkv" \
     --workloads "mixed,long_context" \
     --runs 3 \
@@ -147,14 +147,14 @@ echo "Step 6: 数据分析 — Table 1/2 + Figure 3-7"
 echo "============================================================"
 
 echo "[ANALYSIS] vLLM → Table 1 + Figure 3-6..."
-$CONDA_RUN python -m bidkv.experiments.vllm.analysis \
+$PYTHON -m bidkv.experiments.vllm.analysis \
     --results-dir "$VLLM_FULL_DIR" \
     --output-dir "$VLLM_FULL_DIR/analysis" \
     2>&1 | tee results/vllm_analysis_log.txt
 
 echo ""
 echo "[ANALYSIS] SGLang → Table 2 + Figure 7 + DC..."
-$CONDA_RUN python -m bidkv.experiments.sglang.analysis \
+$PYTHON -m bidkv.experiments.sglang.analysis \
     --results-dir "$SGLANG_DIR" \
     --output-dir "$SGLANG_DIR/analysis" \
     2>&1 | tee results/sglang_analysis_log.txt
@@ -179,7 +179,7 @@ echo "  SGLang aborts: $(grep -l 'aborted\|OVERLOAD_FAILURE' "$SGLANG_DIR"/*.jso
 
 echo "[CHECK] Directional consistency..."
 if [[ -f "$SGLANG_DIR/analysis/directional_consistency.json" ]]; then
-    $CONDA_RUN python -c "
+    $PYTHON -c "
 import json
 dc = json.load(open('$SGLANG_DIR/analysis/directional_consistency.json'))
 print('  DC result:', json.dumps(dc, indent=2)[:500])

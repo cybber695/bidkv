@@ -1,20 +1,44 @@
-% fig2_algorithm.tex — Algorithm 1: GreedyBidSolver
-% Usage: \input{figures/fig2_algorithm}
+\begin{figure}[!t]
+\centering
+\footnotesize
+\begin{minipage}{\columnwidth}
+\hrule
+\vspace{0.5ex}
+\textbf{Algorithm 1} Utility-Ranked Victim Ordering
+\par\vspace{0.5ex}
+\hrule
+\vspace{0.8ex}
 
-\begin{figure}[t]
-\begin{algorithm}[H]
-\caption{Utility-Ranked Victim Ordering}\label{alg:greedy}
 \begin{algorithmic}[1]
-\Require Bid pool $\mathcal{P} = \{b_1, b_2, \ldots, b_B\}$
-\Ensure Utility-ranked ordering $\mathcal{O}$
+\Require Bid pool $\mathcal{P}=\{b_1,b_2,\ldots,b_B\}$; tokens needed $N$
+\Ensure Ordered victim list $\mathcal{L}$
+
 \ForAll{$b \in \mathcal{P}$}
-  \State $U(b) \gets \dfrac{b.r}{b.\delta + \varepsilon}$
-  \Comment{reclamation utility, $\varepsilon = 10^{-3}$}
+  \State $U(b)\gets \dfrac{b.r}{b.\delta+\varepsilon}$ \Comment{utility ratio, $\varepsilon=10^{-3}$}
 \EndFor
-\State Sort $\mathcal{P}$ by $U(b)$ in decreasing order $\to \mathcal{O}$
-\State \Return $\mathcal{O}$
-  \Comment{cached; adapter pops top entry at each pressure event}
+
+\State Sort $\mathcal{P}$ by $U(b)$ in decreasing order
+
+\State $\mathcal{L}\gets[\,]$; $\mathcal{R}\gets\emptyset$; $\Sigma_r\gets 0$ \Comment{victim list, seen request IDs, tokens freed}
+
+\ForAll{$b \in \mathcal{P}$ in sorted order}
+  \If{$b.\textit{request\_id} \in \mathcal{R}$}
+    \State \textbf{continue} \Comment{at most one bid per request}
+  \EndIf
+  \State $\mathcal{L}.\textit{append}(b)$
+  \State $\mathcal{R}\gets\mathcal{R}\cup\{b.\textit{request\_id}\}$
+  \State $\Sigma_r\gets\Sigma_r+b.r$
+  \If{$\Sigma_r \ge N$}
+    \State \textbf{break} \Comment{demand satisfied; remaining list cached}
+  \EndIf
+\EndFor
+
+\State \textbf{return} $\mathcal{L}$ \Comment{on each pressure tick: place $\mathcal{L}[0]$ at running-queue tail; native LIFO evicts it}
 \end{algorithmic}
-\end{algorithm}
+
+\vspace{0.6ex}
+\hrule
+\end{minipage}
+\label{alg:greedy}
 \vspace{-0.4em}
 \end{figure}

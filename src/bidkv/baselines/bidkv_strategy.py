@@ -4,36 +4,16 @@
 scorer-agnostic：支持任意实现 ScoringStrategy 的评分器，
 默认使用 PositionalScoring。
 
-选择公式：U = current_tokens / (δ + ε)，greedy by U（Algorithm 1）。
+选择公式（v8-frozen）：U = current_tokens / (δ + ε)，greedy by U（Algorithm 1）
 
-Mode A 语义（request-level preemption）
---------------------------------------
-SGLANG:
-δ = recompute_norm + late_penalty + starvation
-
-- tokens_freed = output_tokens（decode 阶段 KV）
-  prompt KV 在 SGLang RadixAttention 中为 prefix-cached 共享，evict
-  时实际只释放 output 阶段的 KV；用 output_tokens 避免高估长 prompt 请求。
-- recompute_norm = prompt_tokens / 256（prompt 长度归一化）
-  prefill 重算代价正比于 prompt 长度，长 prompt 请求 δ 增大 → U 降低 →
-  BidKV 主动回避高重算代价的驱逐决策。
-- late_penalty = completion × 2（接近完成的请求获得保护）
-  completion = output_tokens / max_output_tokens；接近完成时 δ 线性增大，
-  保护"很快就能自然释放 KV"的请求不被意外驱逐。
-- starvation = num_preemptions × 0.5（anti-starvation）
-  被多次 preempt 的请求 δ 递增，防止 cascading 连续驱逐同一请求。
-
-Fallback（num_computed_tokens 不可用时）：
-  回退到简化公式 U = current_tokens / (1 + starvation)。
-VLLM：
-δ = 1 + 0.5·completion + 0.3·num_preemptions（v8-frozen formula）
+δ = 1 + w_c·completion + w_s·num_preemptions
 
 - tokens_freed = current_tokens（prompt + output 全部 KV，vLLM recompute-from-scratch）
 - completion = output_tokens / max_output_tokens，衡量已完成比例
   接近完成的请求 δ 增大 → U 降低 → 避免临近结束的请求被驱逐
-- anti-starvation = num_preemptions × 0.3
+- anti-starvation = num_preemptions × w_s
   被多次 preempt 的请求 δ 递增，防止 cascading 连续驱逐同一请求
-- δ ∈ [1.0, 1.8]（completion 0→1，starvation=1 时），freed 强主导排序
+- δ ∈ [1.0, 1.8]（w_c=0.5, w_s=0.3, completion 0→1，1 prior preemption 时）
 
 注意：vLLM Mode A 采用 recompute-from-scratch，因此 current_tokens（整个 KV
 footprint）是实际释放量；无 prefix cache 共享，prompt KV 也会被释放。
@@ -50,17 +30,13 @@ from bidkv.protocol.bid import CompressionBid, make_bid_id
 from bidkv.scoring import PositionalScoring, ScoringStrategy
 from bidkv.solver import GreedyBidSolver, SolverConfig
 
-# ---------------------------------------------------------------------------
-# Sensitivity analysis: environment variable overrides for δ parameters.
-# These allow running sensitivity experiments without code changes.
-# Default values match the published formula.
-# ---------------------------------------------------------------------------
-_COMPLETION_WEIGHT = float(os.environ.get("BIDKV_COMPLETION_WEIGHT", "2.0"))
-_STARVATION_WEIGHT = float(os.environ.get("BIDKV_STARVATION_WEIGHT", "0.5"))
-_RECOMPUTE_DIV = float(os.environ.get("BIDKV_RECOMPUTE_DIV", "256.0"))
-_RECOMPUTE_FLOOR = float(os.environ.get("BIDKV_RECOMPUTE_FLOOR", "0.5"))
-# "default" = normal formula, "freed-only" = δ=1 constant, "no-recompute" = recompute=1
-_DELTA_MODE = os.environ.get("BIDKV_DELTA_MODE", "default")
+# v8-frozen formula weights — overridable via env vars for sensitivity analysis.
+# BIDKV_COMPLETION_WEIGHT: δ += w_c * completion  (default 0.5)
+# BIDKV_STARVATION_WEIGHT: δ += w_s * num_preemptions  (default 0.3)
+_COMPLETION_WEIGHT: float = float(os.environ.get("BIDKV_COMPLETION_WEIGHT", "0.5"))
+_STARVATION_WEIGHT: float = float(os.environ.get("BIDKV_STARVATION_WEIGHT", "0.3"))
+_RECOMPUTE_DIV: float = float(os.environ.get("BIDKV_RECOMPUTE_DIV", "256.0"))
+_RECOMPUTE_FLOOR: float = float(os.environ.get("BIDKV_RECOMPUTE_FLOOR", "0.5"))
 
 
 class BidKVStrategy(BaselineStrategy):
@@ -102,17 +78,10 @@ class BidKVStrategy(BaselineStrategy):
         needed_tokens: int,
         **kwargs: Any,  # noqa: ARG002
     ) -> list[CompressionAction]:
-        """Mode A: 质量感知的请求级驱逐排序。
+        """Mode A: 质量感知的请求级驱逐排序（v8-frozen formula）。
 
-        U = output_tokens / (recompute_norm + late_penalty + starvation + ε)
-
-        - output_tokens = num_computed - num_prompt（仅 decode phase KV）
-        - recompute_norm = prompt_tokens / 256（重算代价归一化）
-        - late_penalty = completion × 2（保护接近完成的请求）
-        - starvation = num_preemptions × 0.5（防止 cascading 驱逐）
-
-        当 num_computed_tokens == 0（信息不可用）时，回退到简化公式：
-        U = current_tokens / (1 + starvation)。
+        U = current_tokens / (δ + ε)
+        δ = 1 + w_c·completion + w_s·num_preemptions
 
         Parameters
         ----------
@@ -136,51 +105,6 @@ class BidKVStrategy(BaselineStrategy):
         for req in candidates:
             if req.current_tokens <= 1:
                 continue
-
-# SGLANG formula
-#             output_tokens = max(0, req.num_computed_tokens - req.num_prompt_tokens)
-#
-#             if output_tokens > 2:
-#                 tokens_freed = output_tokens
-#
-#                 if _DELTA_MODE == "freed-only":
-#                     quality_delta = 1.0
-#                     recompute_norm = 1.0
-#                     completion = 0.0
-#                     late_penalty = 0.0
-#                     starvation_penalty = 0.0
-#                 else:
-#                     if _DELTA_MODE == "no-recompute":
-#                         recompute_norm = 1.0
-#                     else:
-#                         recompute_norm = max(
-#                             _RECOMPUTE_FLOOR, req.num_prompt_tokens / _RECOMPUTE_DIV
-#                         )
-#                     completion = 0.0
-#                     if req.max_output_tokens > 0:
-#                         completion = min(1.0, output_tokens / req.max_output_tokens)
-#                     late_penalty = completion * _COMPLETION_WEIGHT
-#                     starvation_penalty = req.num_preemptions * _STARVATION_WEIGHT
-#                     quality_delta = max(0.1, recompute_norm + late_penalty + starvation_penalty)
-#
-#                 metadata: dict = {
-#                     "output_tokens": output_tokens,
-#                     "recompute_norm": round(recompute_norm, 4),
-#                     "completion": round(completion, 4),
-#                     "num_preemptions": req.num_preemptions,
-#                     "mode": "A",
-#                     "path": "primary",
-#                 }
-#             else:
-#                 tokens_freed = req.current_tokens
-#                 quality_delta = max(0.1, 1.0 + req.num_preemptions * 0.5)
-#                 metadata = {
-#                     "output_tokens": output_tokens,
-#                     "completion": 0.0,
-#                     "num_preemptions": req.num_preemptions,
-#                     "mode": "A",
-#                     "path": "fallback",
-#                 }
 
             # ----------------------------------------------------------------
             # Dual-branch formula

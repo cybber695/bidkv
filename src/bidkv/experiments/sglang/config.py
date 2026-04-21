@@ -13,56 +13,39 @@ from bidkv.experiments.common.model import get_default_model
 
 # ── 策略（v2.3 冻结版本，3 策略核心）────────────────────────────────
 STRATEGY_SGLANG_DEFAULT = "sglang_default"  # SGLang native (= Preempt-Evict)
-STRATEGY_SLACK_AWARE = "slack_aware"  # 强无-bid 系统对手
+STRATEGY_RANDOM_EVICT = "static-random"  # Random victim selection (Random-Evict in paper)
 STRATEGY_BIDKV = "bidkv"  # BidKV 完整 bid pipeline
 
-# ── SGLang-native 消融策略（3-strategy ablation chain）────────────────
-STRATEGY_VANILLA_SGLANG = "vanilla_sglang"  # pure SGLang native（无任何干预）
-STRATEGY_RANDOM_EVICT = "random_evict"      # random victim selection（随机干预）
-# bidkv = quality-aware victim selection（质量感知干预）
-
-# ── 扩展策略（验证性实验使用，非 v2.3 冻结 54-run 计划范围）────────────
+# 扩展策略（验证性实验使用，非 v2.3 冻结 54-run 计划范围）
+STRATEGY_SLACK_AWARE = "slack_aware"      # 消融验证使用
 STRATEGY_PREEMPT_EVICT_SJF = "preempt-evict-sjf"  # SJF admission + LIFO eviction 消融
-STRATEGY_H2O_STYLE = "h2o-style"  # attention-based heuristic
 
 # v2.3 冻结正式策略（54-run 计划使用）
+# 与论文 Table 4 一致：Vanilla SGLang / Random-Evict / BidKV
 FROZEN_STRATEGIES: tuple[str, ...] = (
     STRATEGY_SGLANG_DEFAULT,
-    STRATEGY_SLACK_AWARE,
-    STRATEGY_BIDKV,
-)
-
-# SGLang-native 消融链策略（3-strategy: vanilla → random → bidkv）
-SGLANG_NATIVE_ABL_STRATEGIES: tuple[str, ...] = (
-    STRATEGY_VANILLA_SGLANG,
     STRATEGY_RANDOM_EVICT,
     STRATEGY_BIDKV,
 )
 
-# 向后兼容别名 = 冻结策略（默认实验配置不变）
+# ALL_STRATEGIES = 冻结的正式评估策略（与论文 Table 4 一致：Vanilla SGLang / Random-Evict / BidKV）
 ALL_STRATEGIES: tuple[str, ...] = FROZEN_STRATEGIES
 
-# 所有允许的策略（包含扩展验证策略）
+# EXTENDED_STRATEGIES = 所有可运行策略（用于 __post_init__ 校验，含扩展/消融策略）
 EXTENDED_STRATEGIES: tuple[str, ...] = (
     STRATEGY_SGLANG_DEFAULT,
-    STRATEGY_SLACK_AWARE,
-    STRATEGY_BIDKV,
-    STRATEGY_PREEMPT_EVICT_SJF,
-    STRATEGY_H2O_STYLE,
-    STRATEGY_VANILLA_SGLANG,
     STRATEGY_RANDOM_EVICT,
+    STRATEGY_BIDKV,
+    STRATEGY_SLACK_AWARE,
+    STRATEGY_PREEMPT_EVICT_SJF,
 )
 
 # SGLang 策略名 → BaselineRegistry 内部名映射
-# 未在此映射中的策略名直接用作 registry key（fallback = identity）
 STRATEGY_BASELINE_MAP: dict[str, str] = {
     STRATEGY_SGLANG_DEFAULT: "preempt-evict",
-    STRATEGY_SLACK_AWARE: "slack-aware",
+    STRATEGY_RANDOM_EVICT: "static-random",
     STRATEGY_BIDKV: "bidkv",
     STRATEGY_PREEMPT_EVICT_SJF: "preempt-evict-sjf",
-    STRATEGY_H2O_STYLE: "largest-first",  # renamed from h2o-style (2026-04-06)
-    STRATEGY_VANILLA_SGLANG: "preempt-evict",  # pure pass-through（在 hook 层特殊处理）
-    STRATEGY_RANDOM_EVICT: "random-evict",      # random victim selection
 }
 
 # ── 工作负载 ──────────────────────────────────────────────────────
@@ -207,6 +190,5 @@ class SGLangExperimentConfig:
         if unknown:
             raise ValueError(
                 f"Unknown strategies: {unknown}. "
-                f"Valid (frozen): {FROZEN_STRATEGIES}. "
-                f"Valid (extended): {EXTENDED_STRATEGIES}"
+                f"Valid strategies: {EXTENDED_STRATEGIES}"
             )

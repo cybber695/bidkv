@@ -3,11 +3,11 @@
 # Sequential execution to avoid GPU/port conflicts
 set -euo pipefail
 
-DIR=/home/cyb/bidkv
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT=$DIR/results/vllm_v8_full_validation
 LOG=$DIR/results/remaining_mixed_progress.log
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-CMD="conda run --no-capture-output -n sagellm python -m bidkv.experiments.vllm.runner"
+CMD="${PYTHON:-python3} -m bidkv.experiments.vllm.runner"
 COMMON="--workloads mixed --runs 3 --num-gpu-blocks-override 600 --gpu-memory-utilization 0.5 --output-dir $OUT"
 
 echo "[$(date)] Starting remaining mixed strategies..." | tee -a $LOG

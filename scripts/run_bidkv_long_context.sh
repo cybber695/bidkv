@@ -28,7 +28,7 @@ echo "Starting BidKV runs: 1 strategy × 3 rates × 3 runs = 9 runs"
 echo "Output: ${RESULTS_DIR}/"
 echo ""
 
-conda run -n sagellm python -m bidkv.experiments.vllm.runner \
+${PYTHON:-python3} -m bidkv.experiments.vllm.runner \
     --strategies bidkv \
     --workloads long_context \
     --long-rates "0.35,0.5,0.7" \
