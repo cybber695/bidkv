@@ -3,7 +3,7 @@
 Usage
 -----
 python -m bidkv.experiments.sglang.runner \\
-    --strategies "sglang_default,slack_aware,bidkv" \\
+    --strategies "sglang_default,static-random,bidkv" \
     --workloads "mixed,long_context" \\
     --runs 3 \\
     --request-rates "1.0,2.0,4.0" \\

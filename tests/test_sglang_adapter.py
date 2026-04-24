@@ -372,16 +372,16 @@ class TestBaselineRouting:
 
         registry = BaselineRegistry()
         registry.create_default_registry()
-        strategy = registry.get("slack-aware")
+        strategy = registry.get("static-random")
 
         adapter = SGLangAdapter(
             config=active_config,
             scoring=positional_scoring,
             experiment_strategy=strategy,
-            experiment_strategy_name="slack_aware",
+            experiment_strategy_name="static-random",
         )
         assert adapter._experiment_strategy is strategy
-        assert adapter._experiment_strategy_name == "slack_aware"
+        assert adapter._experiment_strategy_name == "static-random"
 
     def test_bidkv_name_uses_full_pipeline(
         self, active_config: BidKVConfig, positional_scoring: PositionalScoring
@@ -552,7 +552,7 @@ class TestModeAScheduling:
 
         registry = BaselineRegistry()
         registry.create_default_registry()
-        strategy = registry.get("slack-aware")
+        strategy = registry.get("static-random")
 
         class FakeReq:
             def __init__(self, rid: str, tokens: int) -> None:
@@ -578,7 +578,7 @@ class TestModeAScheduling:
             config=active_config,
             scoring=positional_scoring,
             experiment_strategy=strategy,
-            experiment_strategy_name="slack_aware",
+            experiment_strategy_name="static-random",
         )
         # Track requests
         adapter.track_request("a", list(range(100)))

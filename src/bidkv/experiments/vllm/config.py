@@ -15,9 +15,7 @@ from bidkv.experiments.common.model import get_default_model
 STRATEGY_PREEMPT_EVICT = "preempt-evict"
 STRATEGY_STATIC_RANDOM = "static-random"
 STRATEGY_LARGEST_FIRST = "largest-first"
-STRATEGY_UNIFORM = "uniform"
 STRATEGY_PREEMPT_EVICT_SJF = "preempt-evict-sjf"
-STRATEGY_SLACK_AWARE = "slack-aware"
 STRATEGY_BIDKV = "bidkv"
 
 # Legacy name mapping: frozen result files use "h2o-style", code now uses "largest-first"
@@ -29,9 +27,7 @@ ALL_STRATEGIES: tuple[str, ...] = (
     STRATEGY_PREEMPT_EVICT,
     STRATEGY_STATIC_RANDOM,
     STRATEGY_LARGEST_FIRST,
-    STRATEGY_UNIFORM,
     STRATEGY_PREEMPT_EVICT_SJF,
-    STRATEGY_SLACK_AWARE,
     STRATEGY_BIDKV,
 )
 

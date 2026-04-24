@@ -109,30 +109,45 @@ $A_1$  & $C_1, C_2, C_3, C_4$ & Table~I (strategy differentiation) \\
 
 $A_1$ comprises (i)~the BidKV Python package
 (\texttt{src/bidkv/}), (ii)~vLLM and SGLang adapter layers
-(\texttt{src/bidkv/adapters/}), (iii)~five baseline strategy
-implementations (\texttt{src/bidkv/baselines/}), and (iv)~the
-experiment runner, trace-freeze utilities, and analysis scripts
-(\texttt{src/bidkv/experiments/}).
+(\texttt{src/bidkv/adapters/}), (iii)~five strategy
+implementations (\texttt{src/bidkv/baselines/}): PE, PE-SJF,
+Static-Random, Largest-First, and BidKV, all invoked by~$T_2$,
+and (iv)~the experiment runner, trace-freeze utilities, and analysis
+scripts (\texttt{src/bidkv/experiments/}).
 Together these components instantiate $C_1$--$C_3$ and drive all
 measurements described in $C_4$.
+The component--contribution mapping is:
+\texttt{protocol/} and \texttt{solver/} implement the bid abstraction
+and greedy utility-ranked selection ($C_1$, $C_2$);
+\texttt{scoring/} and \texttt{baselines/} implement the decoupled
+scoring-to-selection pipeline ($C_2$);
+\texttt{adapters/} provides the \texttt{FrameworkAdapter} integration
+for vLLM and SGLang ($C_3$);
+\texttt{experiments/} provides frozen-trace replay, workload drivers,
+and analysis scripts ($C_4$).
 
 \artexp
 
 Among all five vLLM strategies at rate~3.8\,req/s (mixed workload), BidKV
-should achieve the best P95 TTFT ($\approx$631\,ms) and near-best 300\,ms
-SLO attainment ($\approx$83.2\,\%, second only to Static-Random at 84.1\,\%)
-(Table~II).
+should achieve top-2 P95 TTFT (best-on-average $\approx$631\,ms) and
+near-best 300\,ms SLO attainment ($\approx$83.2\,\%, second only to
+Static-Random at $\approx$84.1\,\%) (Table~II).
+Due to run-to-run variation in a live serving system, minor reorderings
+among the top two strategies are expected; the reproducible claim is that
+BidKV and Static-Random are consistently separated from the remaining
+strategies on both P95 TTFT and SLO attainment.
 Across all three arrival rates (2.0, 3.8, and 5.7\,req/s), BidKV should
 rank first or second on both P95 TTFT and SLO attainment (Table~II, Figure~4).
 On the long-context workload at peak load (rate~0.70\,req/s), BidKV should
-achieve the lowest P95 TTFT among all five strategies
-($\approx$30{,}143\,ms; Table~III).
+achieve among the lowest P95 TTFT across all five strategies
+(averaging $\approx$30{,}143\,ms; Table~III).
 For the SGLang portability slice (Table~IV, rate~3.8\,req/s, mixed workload,
 mean of 3~runs), BidKV should achieve 300\,ms SLO attainment of 93.2\,\%
 and P95 TTFT of 337\,ms, versus 92.3\,\% and 386\,ms for Random-Evict,
 and 54.4\,\% and 6{,}207\,ms for vanilla SGLang.
-These results confirm directional consistency (DC-1a/DC-1b) across both
-vLLM and SGLang execution environments.
+These results confirm that BidKV's admission-responsiveness gains are
+directionally consistent across both vLLM and SGLang execution
+environments.
 These results substantiate $C_1$--$C_4$: the bid interface and
 utility-ranked selection produce measurably better admission responsiveness
 across two arrival-rate regimes and two workload types.
@@ -150,6 +165,9 @@ across two arrival-rate regimes and two workload types.
     20--25\,min each; server startup adds $\approx$4\,min per run).
     SGLang portability slice (3 strategies $\times$ rate~3.8\,req/s $\times$ 3~runs = 9~runs): $\approx$2--3\,h
     (each run averages 20--25\,min; server startup adds $\approx$4\,min per run).
+    \textit{First-time SGLang execution requires an additional
+    $\approx$30--60\,min for flashinfer JIT kernel compilation;
+    subsequent runs use the \texttt{/root/.cache/flashinfer/} cache.}
   \item \textbf{Artifact Analysis:} 5--10\,min
     (single analysis script invocation per result directory).
 \end{itemize}
@@ -159,10 +177,13 @@ across two arrival-rate regimes and two workload types.
 \artinpart{Hardware}
 
 \begin{itemize}
-  \item Single NVIDIA RTX A6000 GPU (48\,GiB VRAM); CUDA~12.5.
+  \item Single NVIDIA GPU, Compute Capability $\geq$\,8.0 (Ampere or
+    newer); RTX~A6000 48\,GiB used in this evaluation.
+    CUDA~12.8 driver with nvcc~12.8 required for SGLang kernel
+    compilation (\texttt{cuda-nvcc-12-8} from the NVIDIA apt repository);
+    single-node, single-GPU only---distributed execution is not supported.
   \item $\geq$64\,GiB system RAM; $\geq$8 CPU cores recommended.
   \item $\geq$40\,GB free disk space (model weights, result files).
-  \item No special interconnect is required; single-node, single-GPU only.
 \end{itemize}
 
 \artinpart{Software}
@@ -201,6 +222,9 @@ python -m bidkv.experiments.vllm.freeze_traces \
 
 The model weights are Llama-3.1-8B-Instruct
 (\url{https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct}).
+Access requires a HuggingFace account with an approved model-access
+request; submit the form on the model page (approval is typically
+granted within minutes).
 If a local HuggingFace cache is available, set
 \texttt{HF\_HUB\_OFFLINE=1} and \texttt{TRANSFORMERS\_OFFLINE=1}.
 
@@ -271,14 +295,35 @@ export NO_PROXY="127.0.0.1,localhost"
     \texttt{--block-size~16}, \texttt{--max-model-len~8192},
     \texttt{--enforce-eager}, \texttt{--disable-frontend-multiprocessing},
     \texttt{--no-enable-prefix-caching}.
+    The runner supports \texttt{--resume} to skip already-completed
+    runs; on failure (OOM or server crash), delete the partial result
+    file and re-invoke with \texttt{--resume} to continue.
+    Invocation:
+    \begin{Verbatim}
+python -m bidkv.experiments.vllm.runner \\
+    --strategies preempt-evict,preempt-evict-sjf,\\
+                 static-random,largest-first,bidkv \\
+    --workloads mixed,long_context \\
+    --mixed-rates 2.0,3.8,5.7 \\
+    --long-rates 0.35,0.5,0.7 \\
+    --runs 3 \\
+    --gpu-memory-utilization 0.5 \\
+    --num-gpu-blocks-override 600 \\
+    --output-dir results/vllm_full/ \\
+    --traces-dir experiments/vllm/traces/ \\
+    --resume
+    \end{Verbatim}
 
   \item $T_3$ \textbf{SGLang portability execution.}
     Uses the SGLang runner (\texttt{experiments/sglang/runner.py}) with
     3 strategies (BidKV, Random-Evict, vanilla SGLang) $\times$
     rate~3.8\,req/s $\times$ 3 runs.
+    Strategy name mapping: code name \texttt{sglang\_default} corresponds
+    to paper name ``vanilla SGLang''; \texttt{static-random} corresponds
+    to ``Random-Evict''.
     Fixed server parameters: \texttt{--mem-fraction-static~0.85},
     \texttt{--max-total-tokens~9600}, \texttt{--attention-backend~triton}.
-    The runner is invoked per strategy as:
+    The runner is invoked as:
     \begin{Verbatim}
 STRATS=sglang_default,static-random,bidkv
 python -m bidkv.experiments.sglang.runner \
@@ -296,12 +341,25 @@ python -m bidkv.experiments.sglang.runner \
     \texttt{analysis.py} reads all JSON result files, computes P95 TTFT,
     TPOT P95, throughput, and SLO attainment (from raw per-request data;
     P95 and SLO are not pre-computed), and produces tables and figures.
+    Invocation (run once per result directory):
+    \begin{Verbatim}
+# vLLM results
+python -m bidkv.experiments.vllm.analysis \\
+    --results-dir results/vllm_full/ \\
+    --output-dir results/vllm_full/analysis/
+# SGLang results
+python -m bidkv.experiments.sglang.analysis \\
+    --results-dir results/sglang_portability/ \\
+    --output-dir results/sglang_portability/analysis/
+    \end{Verbatim}
 
 \end{itemize}
 
 \textbf{Dependencies:} $T_1 \rightarrow T_2 \rightarrow T_4$;
 $T_1 \rightarrow T_3 \rightarrow T_4$.
-$T_2$ and $T_3$ are independent and can run in parallel if GPUs are available.
+$T_2$ and $T_3$ are independent; on a single-GPU machine they must be
+run sequentially ($T_2$ first, then $T_3$).
+Parallel execution requires two GPUs.
 
 \textbf{Experimental parameters:}
 \begin{itemize}
@@ -312,8 +370,10 @@ $T_2$ and $T_3$ are independent and can run in parallel if GPUs are available.
   \item SGLang portability ($T_3$): mixed workload,
     rate~3.8\,req/s, 3 runs per strategy.
   \item KV capacity fixed at 600 blocks (9\,600 tokens) to induce
-    sustained KV pressure; this is the critical parameter for
-    strategy differentiation and must not be changed.
+    sustained KV pressure; \textbf{this parameter must not be changed.}
+    Reducing it below this threshold eliminates KV pressure, causing all
+    strategies to converge to near-identical behavior and making strategy
+    differentiation impossible to observe.
   \item Arrival process: Poisson (open-loop); seed~42 for trace replay.
 \end{itemize}
 

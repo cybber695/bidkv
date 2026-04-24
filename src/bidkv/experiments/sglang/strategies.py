@@ -2,12 +2,12 @@
 
 定义 SGLang 可移植性验证实验使用的 3 个策略：
 1. SGLang-Default (= Preempt-Evict) — SGLang 原生驱逐
-2. Slack-Aware — 强无-bid 系统对手（SLO-deadline aware）
+2. Random-Evict (= Static-Random) — 随机驱逐对照
 3. BidKV — 完整 bid pipeline
 
 v2.3 Cross-platform baseline difference explanation:
 SGLang 使用 3 个策略子集。bid 归因已由 vLLM 主实验承担，
-SGLang 仅需验证 bid vs 强系统对手的 directional consistency。
+SGLang 仅需验证 bid vs 随机对照的 directional consistency。
 """
 
 from __future__ import annotations
@@ -19,21 +19,21 @@ from bidkv.baselines import (
     BaselineStrategy,
     BidKVStrategy,
     PreemptEvictStrategy,
-    SlackAwareStrategy,
+    StaticRandomStrategy,
 )
 from bidkv.scoring import PositionalScoring
 
 # SGLang 实验使用的 3 个策略名称（v2.3 frozen）
 SGLANG_STRATEGIES: tuple[str, ...] = (
     "sglang_default",
-    "slack_aware",
+    "static-random",
     "bidkv",
 )
 
 # 策略名称映射：实验名称 → BaselineStrategy.name
 _STRATEGY_NAME_MAP: dict[str, str] = {
     "sglang_default": "preempt-evict",  # SGLang-Default = Preempt-Evict
-    "slack_aware": "slack-aware",
+    "static-random": "static-random",
     "bidkv": "bidkv",
 }
 
@@ -76,9 +76,9 @@ def create_sglang_strategy_configs() -> list[SGLangStrategyConfig]:
             is_framework_default=True,
         ),
         SGLangStrategyConfig(
-            experiment_name="slack_aware",
-            baseline_name="slack-aware",
-            description="强无-bid 系统对手（SLO-deadline aware）",
+            experiment_name="static-random",
+            baseline_name="static-random",
+            description="随机驱逐对照（Random-Evict）",
         ),
         SGLangStrategyConfig(
             experiment_name="bidkv",
@@ -111,7 +111,7 @@ def create_sglang_registry(
     registry = BaselineRegistry()
 
     registry.register(PreemptEvictStrategy())
-    registry.register(SlackAwareStrategy())
+    registry.register(StaticRandomStrategy())
     registry.register(BidKVStrategy(scoring=scoring, delta_budget=delta_budget))
 
     return registry

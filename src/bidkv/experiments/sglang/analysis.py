@@ -262,7 +262,7 @@ class CrossFrameworkAnalyzer:
         **Directional Consistency 定义（v2.3）**：
         SGLang 上 BidKV 的改进趋势：
         - DC-1a: BidKV ≥ Preempt-Evict (sglang_default)
-        - DC-1b: BidKV ≥ Slack-Aware
+        - DC-1b: BidKV ≥ Random-Evict (static-random)
         不要求 numerical equivalence。
 
         Returns
@@ -295,7 +295,7 @@ class CrossFrameworkAnalyzer:
         # SGLang 内部一致性
         sglang_bidkv = sglang_agg.get("bidkv")
         sglang_default = sglang_agg.get("sglang_default")
-        sglang_slack = sglang_agg.get("slack_aware")
+        sglang_random = sglang_agg.get("static-random")
 
         sglang_consistent = True
         # DC-1a: BidKV ≥ Preempt-Evict (sglang_default)
@@ -311,15 +311,15 @@ class CrossFrameworkAnalyzer:
             if not bidkv_vs_default:
                 sglang_consistent = False
 
-        # DC-1b: BidKV ≥ Slack-Aware
-        if sglang_bidkv and sglang_slack:
-            bidkv_vs_slack = sglang_bidkv.mean_slo_attainment >= sglang_slack.mean_slo_attainment
-            details["sglang_bidkv_vs_slack_aware"] = {
+        # DC-1b: BidKV ≥ Random-Evict (static-random)
+        if sglang_bidkv and sglang_random:
+            bidkv_vs_random = sglang_bidkv.mean_slo_attainment >= sglang_random.mean_slo_attainment
+            details["sglang_bidkv_vs_random_evict"] = {
                 "bidkv_slo": sglang_bidkv.mean_slo_attainment,
-                "slack_aware_slo": sglang_slack.mean_slo_attainment,
-                "bidkv_better_or_equal": bidkv_vs_slack,
+                "random_evict_slo": sglang_random.mean_slo_attainment,
+                "bidkv_better_or_equal": bidkv_vs_random,
             }
-            if not bidkv_vs_slack:
+            if not bidkv_vs_random:
                 sglang_consistent = False
 
         details["sglang_internally_consistent"] = sglang_consistent
@@ -373,8 +373,8 @@ class CrossFrameworkAnalyzer:
         list[dict[str, object]]
             每行一个 dict: framework, strategy, slo_attainment, improvement。
 
-        Table 2 format:
-        | Framework | Metric | Default | Slack-Aware | BidKV | Improvement |
+        Table 4 format:
+        | Framework | Metric | Default | Random-Evict | BidKV | Improvement |
         """
         rows: list[dict[str, object]] = []
 

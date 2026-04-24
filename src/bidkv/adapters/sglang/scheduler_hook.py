@@ -17,11 +17,11 @@
 策略分化表（3 策略）：
 
 +-----------------------+-----------------+------------+----------+
-| 层面                  | sglang_default  | slack-aware| bidkv    |
+| 层面                  | sglang_default  | static-random| bidkv    |
 +=======================+=================+============+==========+
-| Waiting 排序          | FCFS            | EDF(arrival| SJF      |
+| Waiting 排序          | FCFS            | SJF(prompt)| SJF      |
 | Running 排序          | no reorder      | cached     | cached   |
-| select_victims        | N/A             | slack-based| U=r/(δ+ε)|
+| select_victims        | N/A             | random     | U=r/(δ+ε)|
 | SRPT 主动驱逐         | ❌              | ❌          | ✅        |
 | Proactive             | ❌              | ✅          | ✅        |
 +-----------------------+-----------------+------------+----------+
@@ -249,7 +249,7 @@ def _reorder_waiting_for_admission(scheduler: Any, adapter: SGLangAdapter) -> No
     | Strategy          | Admission policy                              |
     +===================+===============================================+
     | sglang_default    | FCFS — no reorder (true SGLang default)       |
-    | slack-aware       | EDF by arrival_time (≈ FCFS under uniform SLO)|
+    | static-random     | SJF by prompt_tokens                          |
     | bidkv             | SJF by prompt_tokens                          |
     +-------------------+-----------------------------------------------+
     """
@@ -265,21 +265,8 @@ def _reorder_waiting_for_admission(scheduler: Any, adapter: SGLangAdapter) -> No
         # FCFS — no reorder.
         return
 
-    if strategy_name in ("slack_aware", "slack-aware"):
-        # EDF — tightest deadline first (≈ FCFS under uniform SLO).
-        now_ms = time.monotonic() * 1000
-
-        def _deadline_key(req: Any) -> float:
-            rid = _get_request_id(req) or ""
-            return adapter._request_arrival_ms.get(rid, now_ms)
-
-        waiting_list = list(waiting)
-        waiting_list.sort(key=_deadline_key)
-        waiting.clear()
-        for req in waiting_list:
-            waiting.append(req)
     else:
-        # SJF strategies (bidkv): SJF by prompt_tokens.
+        # SJF strategies (static-random, bidkv): SJF by prompt_tokens.
         waiting_list = list(waiting)
         waiting_list.sort(
             key=lambda r: getattr(r, "num_prompt_tokens", 0)
@@ -303,7 +290,7 @@ def _reorder_running_for_preemption(scheduler: Any, adapter: SGLangAdapter) -> N
     | Strategy          | Preemption ordering                           |
     +===================+===============================================+
     | sglang_default    | NO reorder — pure SGLang default              |
-    | slack-aware       | select_victims(): SLO-slack based             |
+    | static-random     | select_victims(): random victim selection     |
     | bidkv             | select_victims(): bid-informed priority       |
     +-------------------+-----------------------------------------------+
     """
@@ -492,7 +479,7 @@ def _proactive_preempt(scheduler: Any, adapter: SGLangAdapter) -> None:
 def _proactive_srpt(scheduler: Any, adapter: SGLangAdapter) -> None:
     """Proactive SRPT: preempt high-remaining-cost running for low-cost waiting.
 
-    FCFS/EDF strategies (sglang_default, slack-aware) are excluded.
+    FCFS strategies (sglang_default) are excluded.
 
     Guards:
     - KV utilization > 75%
@@ -506,7 +493,6 @@ def _proactive_srpt(scheduler: Any, adapter: SGLangAdapter) -> None:
 
     if strategy_name in (
         "sglang_default", "preempt-evict", "preempt-evict-sjf",
-        "slack_aware", "slack-aware",
     ):
         return
 

@@ -78,17 +78,13 @@ class BaselineRegistry:
         from bidkv.baselines.largest_first import LargestFirstStrategy
         from bidkv.baselines.preempt_evict import PreemptEvictStrategy
         from bidkv.baselines.preempt_evict_sjf import PreemptEvictSJFStrategy
-        from bidkv.baselines.slack_aware import SlackAwareStrategy
         from bidkv.baselines.static_random import StaticRandomStrategy
-        from bidkv.baselines.uniform import UniformStrategy
 
         defaults: list[BaselineStrategy] = [
             PreemptEvictStrategy(),
             PreemptEvictSJFStrategy(),
             StaticRandomStrategy(),
             LargestFirstStrategy(),
-            UniformStrategy(),
-            SlackAwareStrategy(),
             BidKVStrategy(),
         ]
         for strategy in defaults:

@@ -267,8 +267,6 @@ def _reorder_waiting_for_admission(scheduler: Any, adapter: VLLMAdapter) -> None
     │ preempt-evict-sjf │ SJF by prompt_tokens (LIFO eviction ablation)│
     │ static-random     │ SJF by prompt_tokens                        │
     │ largest-first     │ SJF by prompt_tokens                        │
-    │ uniform           │ SJF by prompt_tokens                        │
-    │ slack-aware       │ EDF by arrival_time (≈ FCFS under uniform SLO) │
     │ bidkv             │ SJF by prompt_tokens (same as other SJF)    │
     └─────────────────┴──────────────────────────────────────────────┘
 
@@ -290,21 +288,8 @@ def _reorder_waiting_for_admission(scheduler: Any, adapter: VLLMAdapter) -> None
     if strategy_name == "preempt-evict":
         return
 
-    elif strategy_name == "slack-aware":
-        def _deadline_key(req: Any) -> float:
-            rid = getattr(req, "request_id", "")
-            arrival = adapter._request_arrival_ms.get(rid, now * 1000)
-            return arrival
-
-        waiting_list = list(waiting)
-        waiting_list.sort(key=_deadline_key)
-        waiting.clear()
-        for req in waiting_list:
-            waiting.append(req)
-
     else:
-        # SJF by prompt_tokens (preempt-evict-sjf, static-random, largest-first,
-        # uniform, bidkv).
+        # SJF by prompt_tokens (preempt-evict-sjf, static-random, largest-first, bidkv).
         waiting_list = list(waiting)
         waiting_list.sort(key=lambda r: getattr(r, "num_prompt_tokens", 0))
         waiting.clear()
@@ -326,8 +311,7 @@ def _reorder_running_for_preemption(scheduler: Any, adapter: VLLMAdapter) -> Non
     │ preempt-evict-sjf │ NO reorder — LIFO eviction (SJF ablation)   │
     │ static-random     │ select_victims(): random victim selection    │
     │ largest-first     │ select_victims(): capacity-greedy eviction   │
-    │ uniform           │ select_victims(): equal treatment            │
-    │ slack-aware       │ select_victims(): SLO-slack based            │
+
     │ bidkv             │ select_victims(): bid-informed priority      │
     └─────────────────┴──────────────────────────────────────────────┘
     """
@@ -390,7 +374,7 @@ def _refresh_priority_cache(scheduler: Any, adapter: VLLMAdapter) -> None:
     priority ordering, then caches it for _reorder_running_for_preemption.
 
     Strategy differentiation happens here: BidKV uses bid+quality scoring,
-    largest-first uses positional scoring, uniform uses equal weights, etc.
+    largest-first uses positional scoring, bidkv uses full bid pipeline, etc.
     """
     import time
 
@@ -601,7 +585,7 @@ def _get_max_tokens_estimate(req: Any) -> int:
 def _proactive_srpt(scheduler: Any, adapter: VLLMAdapter) -> None:
     """Proactive SRPT: preempt high-remaining-cost running for low-cost waiting.
 
-    Excluded: FCFS/EDF strategies (preempt-evict, slack-aware).
+    Excluded: FCFS strategies (preempt-evict, preempt-evict-sjf).
 
     Guards: KV > 80%, waiting non-empty, ≥3 running, victim ≥10 output tokens,
     remaining(running) > 1.2× total(waiting), 1.5s cooldown.
@@ -610,7 +594,7 @@ def _proactive_srpt(scheduler: Any, adapter: VLLMAdapter) -> None:
 
     strategy_name = adapter._experiment_strategy_name
 
-    if strategy_name in ("preempt-evict", "preempt-evict-sjf", "slack-aware"):
+    if strategy_name in ("preempt-evict", "preempt-evict-sjf"):
         return
 
     now = time.monotonic()
@@ -722,14 +706,13 @@ def _patched_schedule(scheduler: Any, adapter: VLLMAdapter) -> Any:
     3. Reorder waiting queue by strategy-specific SJF key
     4. Refresh preemption priority cache (select_victims)
     5. Proactive preemption via cached priority (all except preempt-evict)
-    6. Proactive SRPT preemption (SJF strategies, excludes slack-aware)
+    6. Proactive SRPT preemption (SJF strategies)
     7. Reorder running list (strategy-specific victim ordering)
     8. Call original schedule()
 
     Strategy differentiation hierarchy:
     - preempt-evict: FCFS admission + LIFO preemption (true vLLM default)
-    - slack-aware: EDF admission + SLO-slack preemption
-    - static-random/largest-first/uniform/bidkv: SJF(prompt) admission
+    - static-random/largest-first/bidkv: SJF(prompt) admission
       + strategy-specific select_victims() reorder + SRPT
     - preempt-evict-sjf: SJF(prompt) admission + LIFO preemption (ablation)
     - BidKV's edge: quality-aware U = r / (δ + ε) via completion-ratio δ
@@ -840,7 +823,7 @@ def _patched_free_request(scheduler: Any, adapter: VLLMAdapter, request: Any, **
 def _track_waiting_arrival(scheduler: Any, adapter: VLLMAdapter) -> None:
     """Record arrival time for waiting requests.
 
-    Needed for EDF (slack-aware) and anti-starvation (bidkv).
+    Needed for anti-starvation (bidkv).
     Only records on first sight — does not overwrite.
     """
     import time

@@ -17,7 +17,6 @@ STRATEGY_RANDOM_EVICT = "static-random"  # Random victim selection (Random-Evict
 STRATEGY_BIDKV = "bidkv"  # BidKV 完整 bid pipeline
 
 # 扩展策略（验证性实验使用，非 v2.3 冻结 54-run 计划范围）
-STRATEGY_SLACK_AWARE = "slack_aware"      # 消融验证使用
 STRATEGY_PREEMPT_EVICT_SJF = "preempt-evict-sjf"  # SJF admission + LIFO eviction 消融
 
 # v2.3 冻结正式策略（54-run 计划使用）
@@ -31,12 +30,11 @@ FROZEN_STRATEGIES: tuple[str, ...] = (
 # ALL_STRATEGIES = 冻结的正式评估策略（与论文 Table 4 一致：Vanilla SGLang / Random-Evict / BidKV）
 ALL_STRATEGIES: tuple[str, ...] = FROZEN_STRATEGIES
 
-# EXTENDED_STRATEGIES = 所有可运行策略（用于 __post_init__ 校验，含扩展/消融策略）
+# EXTENDED_STRATEGIES = 所有可运行策略（用于 __post_init__ 校验）
 EXTENDED_STRATEGIES: tuple[str, ...] = (
     STRATEGY_SGLANG_DEFAULT,
     STRATEGY_RANDOM_EVICT,
     STRATEGY_BIDKV,
-    STRATEGY_SLACK_AWARE,
     STRATEGY_PREEMPT_EVICT_SJF,
 )
 

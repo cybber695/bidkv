@@ -21,9 +21,7 @@ from bidkv.baselines import (
     PreemptEvictSJFStrategy,
     PreemptEvictStrategy,
     RequestState,
-    SlackAwareStrategy,
     StaticRandomStrategy,
-    UniformStrategy,
 )
 from bidkv.protocol.bid import CompressionBid
 from bidkv.scoring import PositionalScoring
@@ -176,22 +174,20 @@ class TestBaselineRegistry:
     def test_list_strategies(self) -> None:
         registry = BaselineRegistry()
         registry.register(PreemptEvictStrategy())
-        registry.register(UniformStrategy())
+        registry.register(StaticRandomStrategy())
         names = registry.list_strategies()
-        assert names == ["preempt-evict", "uniform"]
+        assert names == ["preempt-evict", "static-random"]
 
     def test_create_default_registry(self) -> None:
         registry = BaselineRegistry()
         registry.create_default_registry()
-        assert registry.count == 7
-        # 验证所有 7 个策略都已注册
+        assert registry.count == 5
+        # 验证所有 5 个策略都已注册
         for name in [
             "preempt-evict",
             "preempt-evict-sjf",
             "static-random",
             "largest-first",
-            "uniform",
-            "slack-aware",
             "bidkv",
         ]:
             assert isinstance(registry.get(name), BaselineStrategy)
@@ -334,44 +330,6 @@ class TestLargestFirst:
 
 
 # ===========================================================================
-# Uniform tests
-# ===========================================================================
-
-
-class TestUniform:
-    """Uniform baseline 测试。"""
-
-    def test_name(self) -> None:
-        assert UniformStrategy().name == "uniform"
-
-    def test_equal_distribution(self) -> None:
-        candidates = _make_candidates(4, tokens_per_req=200)
-        strategy = UniformStrategy()
-        actions = strategy.select_victims(candidates, needed_tokens=200)
-        # 每个请求应压缩约 200/4 = 50 个 token
-        for action in actions:
-            assert action.target_tokens <= 50
-
-    def test_all_actions_compress(self) -> None:
-        strategy = UniformStrategy()
-        actions = strategy.select_victims(_make_candidates(3), needed_tokens=100)
-        for action in actions:
-            assert action.action_type == "compress"
-
-    def test_empty_candidates(self) -> None:
-        strategy = UniformStrategy()
-        assert strategy.select_victims([], needed_tokens=100) == []
-
-    def test_preserves_at_least_one_token(self) -> None:
-        """每个请求至少保留 1 个 token。"""
-        candidates = [RequestState("req-1", current_tokens=2)]
-        strategy = UniformStrategy()
-        actions = strategy.select_victims(candidates, needed_tokens=100)
-        for action in actions:
-            assert action.target_tokens < candidates[0].current_tokens
-
-
-# ===========================================================================
 # Preempt-Evict-SJF tests
 # ===========================================================================
 
@@ -405,54 +363,6 @@ class TestPreemptEvictSJF:
         actions = strategy.select_victims(candidates, needed_tokens=50)
         for action in actions:
             assert action.metadata["strategy"] == "preempt-evict-sjf"
-
-
-# ===========================================================================
-# Slack-Aware tests
-# ===========================================================================
-
-
-class TestSlackAware:
-    """Slack-Aware baseline 测试。"""
-
-    def test_name(self) -> None:
-        assert SlackAwareStrategy().name == "slack-aware"
-
-    def test_furthest_deadline_compressed_first(self) -> None:
-        """deadline 远的请求先被压缩。"""
-        candidates = [
-            RequestState("req-near", current_tokens=200, deadline_ms=5100.0),
-            RequestState("req-far", current_tokens=200, deadline_ms=50000.0),
-            RequestState("req-mid", current_tokens=200, deadline_ms=15000.0),
-        ]
-        strategy = SlackAwareStrategy()
-        actions = strategy.select_victims(candidates, needed_tokens=50, now_ms=5000.0)
-        # req-far (最大 slack=45000) 应该最先被压缩
-        assert actions[0].request_id == "req-far"
-
-    def test_no_deadline_compressed_first(self) -> None:
-        """没有 deadline 的请求优先被压缩（视为无 SLO 保证）。"""
-        candidates = [
-            RequestState("req-with-slo", current_tokens=200, deadline_ms=10000.0),
-            RequestState("req-no-slo", current_tokens=200, deadline_ms=None),
-        ]
-        strategy = SlackAwareStrategy()
-        actions = strategy.select_victims(candidates, needed_tokens=50, now_ms=5000.0)
-        assert actions[0].request_id == "req-no-slo"
-
-    def test_all_actions_compress(self) -> None:
-        strategy = SlackAwareStrategy()
-        actions = strategy.select_victims(_make_candidates(3), needed_tokens=100)
-        for action in actions:
-            assert action.action_type == "compress"
-
-    def test_empty_candidates(self) -> None:
-        strategy = SlackAwareStrategy()
-        assert strategy.select_victims([], needed_tokens=100) == []
-
-    def test_invalid_ratio(self) -> None:
-        with pytest.raises(ValueError, match="compression_ratio"):
-            SlackAwareStrategy(compression_ratio=0.0)
 
 
 # ===========================================================================
@@ -604,8 +514,6 @@ class TestCandidateUniverseConsistency:
             PreemptEvictSJFStrategy(),
             StaticRandomStrategy(seed=42),
             LargestFirstStrategy(),
-            UniformStrategy(),
-            SlackAwareStrategy(),
             BidKVStrategy(delta_budget=0.5),
         ]
 
@@ -632,8 +540,6 @@ class TestCandidateUniverseConsistency:
             PreemptEvictSJFStrategy(),
             StaticRandomStrategy(seed=0),
             LargestFirstStrategy(),
-            UniformStrategy(),
-            SlackAwareStrategy(),
             BidKVStrategy(delta_budget=0.5),
         ]
 

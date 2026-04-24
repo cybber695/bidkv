@@ -613,26 +613,12 @@ def generate_table1_data(aggregations: list[StrategyAggregation]) -> list[dict[s
             "has_solver": False,
             "design_rationale": "Isolates bid mechanism contribution from scoring",
         },
-        "uniform": {
-            "description": "Equal compression ratio across all requests",
-            "has_scoring": False,
-            "has_bid": False,
-            "has_solver": False,
-            "design_rationale": "Isolates differentiated compression value",
-        },
         "preempt-evict-sjf": {
             "description": "SJF admission + LIFO eviction (ablation baseline)",
             "has_scoring": False,
             "has_bid": False,
             "has_solver": False,
             "design_rationale": "Isolates SJF admission contribution from eviction",
-        },
-        "slack-aware": {
-            "description": "SLO deadline-aware victim selection",
-            "has_scoring": False,
-            "has_bid": False,
-            "has_solver": False,
-            "design_rationale": "Quality-unaware scheduling baseline",
         },
         "bidkv": {
             "description": "Full BidKV pipeline (positional scoring + bid + solver)",

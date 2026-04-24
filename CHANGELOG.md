@@ -6,7 +6,19 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- **死代码系统性清理（第二轮）** (2026-04-09):
+- **废弃策略完全移除（uniform + slack-aware）** (2026-04-10):
+  - 删除 `baselines/uniform.py`（`UniformStrategy`，均等驱逐策略）
+  - 删除 `baselines/slack_aware.py`（`SlackAwareStrategy`，SLO-deadline 感知策略）
+  - 清理所有引用：`baselines/__init__.py`、`baselines/registry.py`、`bidkv/__init__.py`
+  - 清理实验配置：`experiments/vllm/config.py`（ALL_STRATEGIES 从 7→5）、`experiments/sglang/config.py`
+  - 更新 SGLang 策略：`experiments/sglang/strategies.py` 中 slack-aware 替换为 static-random
+  - 清理 adapter hooks：`adapters/vllm/scheduler_hook.py`、`adapters/sglang/scheduler_hook.py`
+  - 更新测试：`tests/test_baselines.py`（删除 TestUniform/TestSlackAware）、`tests/test_sglang_adapter.py`
+  - 更新 `tests/test_vllm_experiment.py`：total_runs 期望值 7→5 策略
+  - 更新 AD：`paper-ad/bidkv_ad.tex` 从 "seven implementations (five evaluated)" 简化为 "five implementations"
+  - 测试结果：362 tests pass
+
+
   - **文件删除**：`baselines/random_evict.py`（RandomEvictStrategy，未注册、非 v2.3 冻结策略）、
     `compression/`（整个目录，Mode B CompressionExecutor Protocol）、
     `scoring/attention.py`（AttentionWeightScoring，依赖 `output_attentions=True`，FlashAttention 不可用）、

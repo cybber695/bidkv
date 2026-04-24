@@ -58,7 +58,7 @@ class TestExperimentConfig:
         assert config.strategies == ALL_STRATEGIES
         assert config.workloads == ALL_WORKLOADS
         assert config.runs_per_combo == 3
-        assert config.total_runs == 7 * 2 * 3 * 3  # 126
+        assert config.total_runs == 5 * 2 * 3 * 3  # 90 (5 strategies × 2 workloads × 3 rates × 3 runs)
 
     def test_custom_config(self) -> None:
         config = ExperimentConfig(
@@ -414,7 +414,7 @@ class TestTable1:
         strategies = {row["strategy"] for row in table}
         assert "largest-first" in strategies  # Largest-First 必须出现
         assert "bidkv" in strategies
-        assert len(strategies) == 7
+        assert len(strategies) == 5
 
     def test_table1_largest_first_present(self) -> None:
         """Largest-First 必须出现在 Table 1 中（was H2O-Style, issue-047 验收标准）。"""

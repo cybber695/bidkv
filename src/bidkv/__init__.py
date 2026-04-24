@@ -4,7 +4,7 @@
 - Protocol 层：核心类型（CompressionBid, BidPool, BidAcceptance）
 - Scoring 层：PositionalScoring token 重要度评分
 - Core 层：BidPoolManager, GreedyBidSolver, PressureDetector
-- Baselines 层：7 个 baseline 策略
+- Baselines 层：5 个评估策略
 """
 
 from bidkv._version import __version__
@@ -19,9 +19,7 @@ from bidkv.baselines import (
     PreemptEvictSJFStrategy,
     PreemptEvictStrategy,
     RequestState,
-    SlackAwareStrategy,
     StaticRandomStrategy,
-    UniformStrategy,
 )
 from bidkv.config import BidKVConfig
 from bidkv.experiments import ExperimentMetrics
@@ -78,9 +76,7 @@ __all__ = [
     "PreemptEvictStrategy",
     "PreemptEvictSJFStrategy",
     "RequestState",
-    "SlackAwareStrategy",
     "StaticRandomStrategy",
-    "UniformStrategy",
     # Adapters
     "BaseAdapterMetrics",
     "FrameworkAdapter",
