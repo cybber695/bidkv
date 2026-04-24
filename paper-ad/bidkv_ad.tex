@@ -90,9 +90,9 @@ $A_1$  & $C_1, C_2, C_3, C_4$ & Table~I (strategy differentiation) \\
        &                      & Table~V (robustness sensitivity) \\
        &                      & Figure~1 (motivation) \\
        &                      & Figure~2 (system architecture) \\
-       &                      & Figure~3 (algorithm) \\
-       &                      & Figure~4 (reclamation analysis) \\
-       &                      & Figure~5 (victim-selection tradeoff) \\
+       &                      & Algorithm~1 (greedy victim ordering) \\
+       &                      & Figure~3 (reclamation analysis) \\
+       &                      & Figure~4 (victim-selection tradeoff) \\
 \bottomrule
 \end{tabular}%
 }
@@ -137,7 +137,7 @@ among the top two strategies are expected; the reproducible claim is that
 BidKV and Static-Random are consistently separated from the remaining
 strategies on both P95 TTFT and SLO attainment.
 Across all three arrival rates (2.0, 3.8, and 5.7\,req/s), BidKV should
-rank first or second on both P95 TTFT and SLO attainment (Table~II, Figure~4).
+rank first or second on both P95 TTFT and SLO attainment (Table~II).
 On the long-context workload at peak load (rate~0.70\,req/s), BidKV should
 achieve among the lowest P95 TTFT across all five strategies
 (averaging $\approx$30{,}143\,ms; Table~III).
@@ -406,9 +406,9 @@ Analysis scripts in \texttt{experiments/vllm/} and
 TTFT, TPOT P95, throughput, and SLO attainment from raw
 per-request data (P95 and SLO are not pre-computed in the JSON).
 Outputs are JSON metric files (supporting Tables~II--IV) and a PDF
-reclamation figure (Figure~4). Figures~1--3 and~5 are pre-generated
-static assets in \texttt{paper/figures/} and are not produced by
-the analysis scripts.
+reclamation figure (Figure~3). Figures~1--2, Algorithm~1, and
+Figure~4 are pre-generated static assets in \texttt{paper/figures/}
+and are not produced by the analysis scripts.
 The scripts handle the legacy field-name difference between older
 result batches (\texttt{total\_compressions}) and newer ones
 (\texttt{total\_evictions}).
