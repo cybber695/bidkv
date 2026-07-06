@@ -142,8 +142,9 @@ def uninstall_scheduler_hook(scheduler: Any, adapter: VLLMAdapter) -> None:  # n
 
 
 _SCHEDULE_CALL_COUNT = 0
-_DIAG_LOG = "/tmp/bidkv_diag.log"
-_METRICS_FILE = "/tmp/bidkv_metrics_latest.json"
+_BIDKV_TMPDIR = os.environ.get("BIDKV_TMPDIR", "/tmp")
+_DIAG_LOG = os.path.join(_BIDKV_TMPDIR, "bidkv_diag.log")
+_METRICS_FILE = os.path.join(_BIDKV_TMPDIR, "bidkv_metrics_latest.json")
 
 
 def _diag(msg: str) -> None:

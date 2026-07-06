@@ -908,7 +908,7 @@ def parse_args(argv: list[str] | None = None) -> tuple[ExperimentConfig, bool]:
     parser.add_argument("--host", type=str, default="127.0.0.1")
     parser.add_argument("--block-size", type=int, default=16)
     parser.add_argument("--max-num-seqs", type=int, default=32)
-    parser.add_argument("--gpu-memory-utilization", type=float, default=0.85)
+    parser.add_argument("--gpu-memory-utilization", type=float, default=0.50)
     parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument(
         "--max-num-batched-tokens",

@@ -86,7 +86,7 @@ class VLLMServerConfig:
     model: str = field(default_factory=get_default_model)
     block_size: int = 16
     max_num_seqs: int = 32
-    gpu_memory_utilization: float = 0.85
+    gpu_memory_utilization: float = 0.50
     enforce_eager: bool = True
     disable_frontend_multiprocessing: bool = True
     max_model_len: int = 8192

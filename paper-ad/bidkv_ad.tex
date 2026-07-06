@@ -216,6 +216,9 @@ across two arrival-rate regimes and two workload types.
     the NVIDIA official apt repository instead
     (\texttt{/usr/local/cuda-12.8/bin/nvcc}).
     SGLang and vLLM share one conda environment in this artifact.
+    \textit{Note:} The original experiments used a CUDA~12.5 driver;
+    nvcc~12.8 is compatible with driver~12.5 and can be installed
+    independently via \texttt{cuda-nvcc-12-8}.
   \item BidKV package (this artifact; zero external dependencies beyond
     vLLM/SGLang, which are runtime-only imports in the adapter layer)
 \end{itemize}
@@ -331,6 +334,11 @@ python -m bidkv.experiments.vllm.runner \
     --mixed-rates 2.0,3.8,5.7 \
     --long-rates 0.35,0.5,0.7 \
     --runs 3 \
+    --max-num-seqs 32 \
+    --block-size 16 \
+    --enforce-eager \
+    --disable-frontend-multiprocessing \
+    --no-enable-prefix-caching \
     --gpu-memory-utilization 0.5 \
     --num-gpu-blocks-override 600 \
     --max-model-len 8192 \

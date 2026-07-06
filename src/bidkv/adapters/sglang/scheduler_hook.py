@@ -38,6 +38,7 @@ from __future__ import annotations
 import contextlib
 import functools
 import logging
+import os
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -50,8 +51,9 @@ logger = logging.getLogger(__name__)
 _ORIG_PREFIX = "_bidkv_orig_"
 
 _SCHEDULE_CALL_COUNT = 0
-_DIAG_LOG = "/tmp/bidkv_sglang_diag.log"
-_METRICS_FILE = "/tmp/bidkv_sglang_metrics_latest.json"
+_BIDKV_TMPDIR = os.environ.get("BIDKV_TMPDIR", "/tmp")
+_DIAG_LOG = os.path.join(_BIDKV_TMPDIR, "bidkv_sglang_diag.log")
+_METRICS_FILE = os.path.join(_BIDKV_TMPDIR, "bidkv_sglang_metrics_latest.json")
 
 
 def _diag(msg: str) -> None:
