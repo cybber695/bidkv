@@ -190,7 +190,7 @@ def main() -> None:
         # Pass our subprocess wrapper so BidKV hooks run inside the spawned
         # Scheduler process.  This replaces the old runpy.run_module approach
         # which could not inject hooks across spawn boundaries.
-        if server_args.grpc_mode:
+        if getattr(server_args, "grpc_mode", False):
             import asyncio
 
             from sglang.srt.entrypoints.grpc_server import serve_grpc
@@ -203,10 +203,19 @@ def main() -> None:
         else:
             from sglang.srt.entrypoints.http_server import launch_server
 
-            launch_server(
-                server_args,
-                run_scheduler_process_func=_bidkv_run_scheduler_process,
-            )
+            # sglang >= 0.5.x: pass our subprocess wrapper so BidKV hooks run
+            # inside the spawned Scheduler process.
+            # sglang 0.4.x: launch_server does not accept run_scheduler_process_func.
+            # In that case we fall back to patching Scheduler.__init__ in this process.
+            try:
+                launch_server(
+                    server_args,
+                    run_scheduler_process_func=_bidkv_run_scheduler_process,
+                )
+            except TypeError:
+                # sglang 0.4.x fallback
+                _patch_sglang_scheduler(strategy)
+                launch_server(server_args)
     finally:
         kill_process_tree(os.getpid(), include_parent=False)
 

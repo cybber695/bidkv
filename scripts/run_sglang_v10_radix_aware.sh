@@ -20,7 +20,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 export PYTHONPATH="${REPO_ROOT}/src:${PYTHONPATH:-}"
-export HF_HUB_OFFLINE=1
+# export HF_HUB_OFFLINE=1  # SGLang needs to download hf_quant_config.json once
 export TRANSFORMERS_OFFLINE=1
 export BIDKV_MODEL="${BIDKV_MODEL:-meta-llama/Llama-3.1-8B-Instruct}"
 export no_proxy="127.0.0.1,localhost"
@@ -28,19 +28,19 @@ export NO_PROXY="127.0.0.1,localhost"
 export CUDA_HOME=/usr/local/cuda-12.8
 export PATH="/usr/local/cuda-12.8/bin:$PATH"
 
-PYTHON="python3"
+PYTHON="/root/miniconda3/envs/bidkv_sglang/bin/python"
 OUTPUT_DIR="results/sglang_v10_radix_aware"
 mkdir -p "$OUTPUT_DIR"
 
 echo "=== SGLang v10: Radix-Aware BidKV Ablation ==="
-echo "Strategies: vanilla_sglang, random_evict, bidkv"
+echo "Strategies: sglang_default, static-random, bidkv"
 echo "Workload: mixed @ rate=3.8, 3 runs per strategy"
 echo "BidKV formula: Branch A (private_tokens) / Branch B (v8-frozen fallback)"
 echo "Start: $(date)"
 echo "Output: $OUTPUT_DIR"
 echo ""
 
-for STRAT in vanilla_sglang random_evict bidkv; do
+for STRAT in sglang_default static-random bidkv; do
   echo "--- Strategy: $STRAT ($(date)) ---"
   $PYTHON -m bidkv.experiments.sglang.runner \
     --strategies "$STRAT" \
@@ -96,14 +96,14 @@ for f in files:
     })
 
 ref = {
-    'vanilla_sglang': {'slo': 55.2, 'p95': 6451},
-    'random_evict':   {'slo': 92.9, 'p95': 355},
+    'sglang_default': {'slo': 55.2, 'p95': 6451},
+    'static-random':   {'slo': 92.9, 'p95': 355},
     'bidkv':          {'slo': 92.4, 'p95': 359},   # v8-frozen baseline
 }
 
 print(f"\n{'Strategy':<20} {'TTFT-p50':>9} {'TTFT-p95':>9} {'TPOT-p95':>9} {'Tput':>7} {'SLO300':>7} {'OK/N':>6}  vs v8-baseline")
 print("-"*95)
-for strat in ['vanilla_sglang', 'random_evict', 'bidkv']:
+for strat in ['sglang_default', 'static-random', 'bidkv']:
     rows = rows_by_strat.get(strat, [])
     if not rows:
         print(f"{strat:<20}  (no data)")

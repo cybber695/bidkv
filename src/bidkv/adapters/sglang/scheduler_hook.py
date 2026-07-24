@@ -167,6 +167,19 @@ def _patched_get_next_batch_to_run(scheduler: Any, adapter: SGLangAdapter) -> An
         tracked = len(adapter._request_tokens)
         running_count = _get_running_count(scheduler)
         pct = (used / total * 100) if total > 0 else 0.0
+        # Deep debug: dump actual scheduler attributes for first 3 calls
+        if _SCHEDULE_CALL_COUNT <= 3:
+            rb = getattr(scheduler, "running_batch", "##NO_RB##")
+            rb_reqs = getattr(rb, "reqs", "##NO_REQS##") if rb != "##NO_RB##" else "N/A"
+            kv = getattr(scheduler, "token_to_kv_pool_allocator", "##NO_KV##")
+            wq = getattr(scheduler, "waiting_queue", "##NO_WQ##")
+            _diag(
+                f"DEBUG #{_SCHEDULE_CALL_COUNT}: "
+                f"running_batch={type(rb).__name__ if rb != '##NO_RB##' else 'MISSING'} "
+                f"len(reqs)={len(rb_reqs) if rb_reqs != '##NO_REQS##' else 'MISSING'} "
+                f"kv_allocator={type(kv).__name__ if kv != '##NO_KV##' else 'MISSING'} "
+                f"len(waiting)={len(wq) if wq != '##NO_WQ##' else 'MISSING'}"
+            )
         _diag(
             f"get_next_batch_to_run() #{_SCHEDULE_CALL_COUNT}: "
             f"kv={used}/{total} ({pct:.1f}%) "
